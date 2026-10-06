@@ -186,6 +186,7 @@ def exportar_csv(
 def exportar_pdf_consolidado(
     anio: int = 2026,
     mes: int = 9,
+    inline: bool = False,
     current_user: Dict[str, Any] = Depends(require_roles(["ADMIN", "GERENTE"]))
 ):
     with get_db_cursor() as cur:
@@ -235,10 +236,11 @@ def exportar_pdf_consolidado(
             perfiles=perfiles
         )
 
+        disposition = "inline" if inline else "attachment"
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=reporte_nomina_{anio}_{mes:02d}.pdf"}
+            headers={"Content-Disposition": f"{disposition}; filename=reporte_nomina_{anio}_{mes:02d}.pdf"}
         )
 
 # Volante individual del operario (filtrado estrictamente por su propio empleado_id del token)
@@ -315,6 +317,7 @@ def obtener_mi_volante(
 def descargar_mi_volante_pdf(
     anio: int,
     mes: int,
+    inline: bool = False,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     emp_id = current_user["empleado_id"]
@@ -369,10 +372,11 @@ def descargar_mi_volante_pdf(
         }
 
         pdf_bytes = generar_volante_pdf(detalle_dict, conceptos)
+        disposition = "inline" if inline else "attachment"
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=volante_{row[5]}_{anio}_{mes:02d}.pdf"}
+            headers={"Content-Disposition": f"{disposition}; filename=volante_{row[5]}_{anio}_{mes:02d}.pdf"}
         )
 
 # Descarga de volante por empleado (exclusivo Admin y Gerente)
@@ -381,6 +385,7 @@ def descargar_volante_empleado_pdf(
     empleado_id: int,
     anio: int,
     mes: int,
+    inline: bool = False,
     current_user: Dict[str, Any] = Depends(require_roles(["ADMIN", "GERENTE"]))
 ):
     with get_db_cursor() as cur:
@@ -433,10 +438,11 @@ def descargar_volante_empleado_pdf(
         }
 
         pdf_bytes = generar_volante_pdf(detalle_dict, conceptos)
+        disposition = "inline" if inline else "attachment"
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=volante_{row[5]}_{anio}_{mes:02d}.pdf"}
+            headers={"Content-Disposition": f"{disposition}; filename=volante_{row[5]}_{anio}_{mes:02d}.pdf"}
         )
 
 @router.get("/auditoria")

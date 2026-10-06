@@ -96,6 +96,97 @@ async function descargarArchivoAutenticado(endpoint, nombreArchivo) {
   }
 }
 
+let currentPdfBlobUrl = null;
+
+async function abrirVisorPdf(endpoint, titulo, nombreDescarga) {
+  const modal = document.getElementById('pdf-viewer-modal');
+  const iframe = document.getElementById('pdf-modal-iframe');
+  const titleEl = document.getElementById('pdf-modal-title');
+  const subtitleEl = document.getElementById('pdf-modal-subtitle');
+  const loadingEl = document.getElementById('pdf-modal-loading');
+  const btnDownload = document.getElementById('pdf-modal-download-btn');
+  const btnNewTab = document.getElementById('pdf-modal-newtab-btn');
+
+  if (!modal || !iframe) return;
+
+  titleEl.textContent = titulo || 'Visor de Documento PDF';
+  subtitleEl.textContent = nombreDescarga || 'PayrollFlow Document Engine';
+  loadingEl.classList.remove('hidden');
+  modal.classList.remove('hidden');
+
+  try {
+    const url = endpoint.startsWith('http') ? endpoint : `${endpoint}`;
+    const sep = url.includes('?') ? '&' : '?';
+    const urlConToken = `${url}${sep}token=${encodeURIComponent(state.token || '')}&inline=true`;
+
+    const headers = {};
+    if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
+
+    const res = await fetch(urlConToken, { method: 'GET', headers });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Error al cargar PDF (${res.status})`);
+    }
+
+    const blob = await res.blob();
+    if (currentPdfBlobUrl) window.URL.revokeObjectURL(currentPdfBlobUrl);
+    currentPdfBlobUrl = window.URL.createObjectURL(blob);
+
+    iframe.src = currentPdfBlobUrl;
+    loadingEl.classList.add('hidden');
+
+    btnDownload.onclick = () => {
+      const a = document.createElement('a');
+      a.href = currentPdfBlobUrl;
+      a.download = nombreDescarga || 'documento.pdf';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      showToast(`Descargando ${nombreDescarga || 'documento.pdf'}`);
+    };
+
+    btnNewTab.onclick = () => {
+      window.open(urlConToken, '_blank');
+    };
+  } catch (err) {
+    loadingEl.classList.add('hidden');
+    showToast(`Error al abrir visor: ${err.message}`, 'error');
+    cerrarPdfViewerModal();
+  }
+}
+
+function cerrarPdfViewerModal() {
+  const modal = document.getElementById('pdf-viewer-modal');
+  const iframe = document.getElementById('pdf-modal-iframe');
+  if (modal) modal.classList.add('hidden');
+  if (iframe) iframe.src = 'about:blank';
+  if (currentPdfBlobUrl) {
+    window.URL.revokeObjectURL(currentPdfBlobUrl);
+    currentPdfBlobUrl = null;
+  }
+}
+
+function filtrarEmpleadosDirectorio(texto) {
+  const query = (texto || '').toLowerCase().trim();
+  const rows = document.querySelectorAll('#tabla-empleados-body tr');
+  let visibles = 0;
+
+  rows.forEach(row => {
+    const textContent = row.textContent.toLowerCase();
+    if (!query || textContent.includes(query)) {
+      row.style.display = '';
+      visibles++;
+    } else {
+      row.style.display = 'none';
+    }
+  });
+
+  const countBadge = document.getElementById('empleados-visibles-badge');
+  if (countBadge) {
+    countBadge.textContent = query ? `${visibles} de ${state.empleados.length} encontrados` : `${state.empleados.length} colaboradores`;
+  }
+}
+
 async function apiRequest(endpoint, options = {}) {
   const headers = options.headers || {};
   if (state.token) {
@@ -430,13 +521,17 @@ async function renderGerenteDashboard() {
           </p>
         </div>
         <div class="flex items-center space-x-2">
-          <button onclick="descargarArchivoAutenticado('/api/reportes/export/csv?anio=2026&mes=9', 'nomina_2026_09.csv')" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-sm transition flex items-center space-x-1.5 cursor-pointer">
+          <button onclick="descargarArchivoAutenticado('/api/reportes/export/csv?anio=2026&mes=9', 'nomina_2026_09.csv')" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition flex items-center space-x-1.5 cursor-pointer">
             <i class="fa-solid fa-file-csv text-emerald-600"></i>
             <span>Exportar CSV</span>
           </button>
-          <button onclick="descargarArchivoAutenticado('/api/reportes/export/pdf?anio=2026&mes=9', 'reporte_nomina_2026_09.pdf')" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition flex items-center space-x-1.5 cursor-pointer">
-            <i class="fa-solid fa-file-pdf"></i>
-            <span>Descargar Reporte PDF</span>
+          <button onclick="abrirVisorPdf('/api/reportes/export/pdf?anio=2026&mes=9', 'Informe Financiero Consolidado - Septiembre 2026', 'reporte_nomina_2026_09.pdf')" class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition flex items-center space-x-1.5 cursor-pointer">
+            <i class="fa-solid fa-eye text-blue-400"></i>
+            <span>Ver Reporte PDF</span>
+          </button>
+          <button onclick="descargarArchivoAutenticado('/api/reportes/export/pdf?anio=2026&mes=9', 'reporte_nomina_2026_09.pdf')" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition flex items-center space-x-1.5 cursor-pointer">
+            <i class="fa-solid fa-download"></i>
+            <span>Descargar PDF</span>
           </button>
         </div>
       </div>
@@ -1004,18 +1099,40 @@ async function renderAdminEmpleados() {
   const empleados = await apiRequest('/empleados');
   state.empleados = empleados;
 
+  // Mostramos primero los recién registrados para máxima visibilidad (ej. Jesús Cantillo)
+  const empleadosOrdenados = [...empleados].sort((a, b) => b.id - a.id);
+
   return `
     <div class="space-y-6">
       <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight">Directorio de Colaboradores (85 Empleados)</h2>
-          <p class="text-xs text-slate-500 mt-0.5">Gestión de datos salariales, hijos a cargo y perfil laboral.</p>
+          <div class="flex items-center space-x-3">
+            <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight">Directorio de Colaboradores</h2>
+            <span id="empleados-visibles-badge" class="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-xs font-bold border border-blue-200">
+              ${empleados.length} colaboradores activos
+            </span>
+          </div>
+          <p class="text-xs text-slate-500 mt-0.5">Gestión de datos salariales, hijos a cargo y asignación de perfil laboral.</p>
         </div>
 
-        <button onclick="abrirModalNuevoEmpleado()" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition flex items-center space-x-1.5">
+        <button onclick="abrirModalNuevoEmpleado()" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition flex items-center space-x-1.5 cursor-pointer">
           <i class="fa-solid fa-user-plus"></i>
           <span>Registrar Empleado</span>
         </button>
+      </div>
+
+      <!-- Live Search & Filter Bar -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div class="relative w-full sm:max-w-md">
+          <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+          <input type="text" id="buscar-empleados" oninput="filtrarEmpleadosDirectorio(this.value)"
+            placeholder="Buscar por nombre, cédula o cargo (ej. Jesús Cantillo)..."
+            class="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+        </div>
+        <div class="flex items-center space-x-2 text-xs text-slate-500">
+          <i class="fa-solid fa-arrow-down-wide-short text-slate-400"></i>
+          <span>Ordenados por más recientes primero</span>
+        </div>
       </div>
 
       <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -1033,10 +1150,13 @@ async function renderAdminEmpleados() {
                 <th class="py-3 px-4 text-center">Acciones</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-100">
-              ${empleados.map(e => `
-                <tr class="hover:bg-slate-50 transition">
-                  <td class="py-3 px-4 font-mono text-slate-400">#${e.id}</td>
+            <tbody id="tabla-empleados-body" class="divide-y divide-slate-100">
+              ${empleadosOrdenados.map(e => `
+                <tr class="hover:bg-slate-50 transition ${e.id >= 86 ? 'bg-amber-50/50' : ''}">
+                  <td class="py-3 px-4 font-mono text-slate-500">
+                    #${e.id}
+                    ${e.id >= 86 ? '<span class="ml-1 px-1.5 py-0.5 rounded text-[9px] bg-emerald-100 text-emerald-800 font-bold uppercase">Nuevo</span>' : ''}
+                  </td>
                   <td class="py-3 px-4 font-mono font-medium text-slate-700">${e.documento}</td>
                   <td class="py-3 px-4 font-bold text-slate-900">${e.nombres} ${e.apellidos}</td>
                   <td class="py-3 px-4 font-semibold text-blue-700">${e.perfil_nombre}</td>
@@ -1046,7 +1166,7 @@ async function renderAdminEmpleados() {
                   </td>
                   <td class="py-3 px-4 text-slate-500">${e.email || '-'}</td>
                   <td class="py-3 px-4 text-center">
-                    <button onclick="abrirModalEditarEmpleado(${JSON.stringify(e).replace(/"/g, '&quot;')})" class="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[10px] transition">
+                    <button onclick="abrirModalEditarEmpleado(${JSON.stringify(e).replace(/"/g, '&quot;')})" class="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[10px] transition cursor-pointer">
                       <i class="fa-solid fa-pen"></i> Editar
                     </button>
                   </td>
@@ -1183,10 +1303,16 @@ async function renderOperarioVolante() {
             <p class="text-xs text-slate-500 mt-0.5">Liquidación de Nómina correspondiente a Septiembre 2026</p>
           </div>
 
-          <button onclick="descargarArchivoAutenticado('/api/reportes/me/volantes/2026/9/pdf', 'volante_mi_pago_2026_09.pdf')" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition flex items-center space-x-1.5 cursor-pointer">
-            <i class="fa-solid fa-download"></i>
-            <span>Descargar Colilla (PDF)</span>
-          </button>
+          <div class="flex items-center space-x-2">
+            <button onclick="abrirVisorPdf('/api/reportes/me/volantes/2026/9/pdf', 'Mi Desprendible de Pago - Septiembre 2026', 'volante_mi_pago_2026_09.pdf')" class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition flex items-center space-x-1.5 cursor-pointer">
+              <i class="fa-solid fa-eye text-blue-400"></i>
+              <span>Ver Volante (PDF)</span>
+            </button>
+            <button onclick="descargarArchivoAutenticado('/api/reportes/me/volantes/2026/9/pdf', 'volante_mi_pago_2026_09.pdf')" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition flex items-center space-x-1.5 cursor-pointer">
+              <i class="fa-solid fa-download"></i>
+              <span>Descargar PDF</span>
+            </button>
+          </div>
         </div>
 
         <!-- Voucher Paper UI -->
@@ -1534,9 +1660,9 @@ async function verDetalleLiquidacionModal(id) {
               <td class="py-2.5 px-3 text-right font-medium text-rose-600">-${formatCOP(d.deduccion_salud + d.deduccion_pension)}</td>
               <td class="py-2.5 px-3 text-right font-extrabold text-blue-900">${formatCOP(d.neto)}</td>
               <td class="py-2.5 px-3 text-center">
-                <button onclick="descargarArchivoAutenticado('/api/reportes/volantes/${d.empleado_id}/2026/9/pdf', 'volante_${d.documento}_2026_09.pdf')" class="px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold inline-flex items-center space-x-1 cursor-pointer transition shadow-xs" title="Descargar Volante individual en PDF">
+                <button onclick="abrirVisorPdf('/api/reportes/volantes/${d.empleado_id}/2026/9/pdf', 'Volante de Pago — ${d.nombres} ${d.apellidos}', 'volante_${d.documento}_2026_09.pdf')" class="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold inline-flex items-center space-x-1 cursor-pointer transition shadow-xs" title="Visualizar y descargar Volante en PDF">
                   <i class="fa-solid fa-file-pdf"></i>
-                  <span>PDF</span>
+                  <span>Ver PDF</span>
                 </button>
               </td>
             </tr>
