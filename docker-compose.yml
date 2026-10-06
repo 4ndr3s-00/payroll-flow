@@ -10,7 +10,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"
+      # Usa DOCKER_PG_PORT (por defecto 5435) para no colisionar con PostgreSQL local en el puerto 5432
+      - "${DOCKER_PG_PORT:-5435}:5432"
     volumes:
       - ./01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - ./02_seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
@@ -22,7 +23,9 @@ services:
       retries: 5
 
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: payroll_app
     restart: unless-stopped
     ports:
@@ -34,6 +37,7 @@ services:
       - DB_PASSWORD=postgres
       - DB_NAME=payroll_db
       - JWT_SECRET=super-secret-payroll-key-2026-sena-security-token
+      - ENVIRONMENT=production
     depends_on:
       postgres:
         condition: service_healthy

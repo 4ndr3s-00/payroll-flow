@@ -12,7 +12,7 @@ _connection_pool = None
 
 def get_pool():
     global _connection_pool
-    if _connection_pool is None:
+    if _connection_pool is None or _connection_pool.closed:
         try:
             _connection_pool = pool.ThreadedConnectionPool(
                 minconn=2,
@@ -21,7 +21,8 @@ def get_pool():
                 port=settings.DB_PORT,
                 user=settings.DB_USER,
                 password=settings.DB_PASSWORD,
-                dbname=settings.DB_NAME
+                dbname=settings.DB_NAME,
+                client_encoding="utf-8"
             )
             logger.info("PostgreSQL connection pool initialized successfully.")
         except Exception as e:

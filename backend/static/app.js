@@ -9,7 +9,7 @@ const API_BASE = '/api';
 const state = {
   token: localStorage.getItem('payroll_token') || null,
   user: JSON.parse(localStorage.getItem('payroll_user') || 'null'),
-  currentTab: 'dashboard',
+  currentTab: localStorage.getItem('payroll_tab') || 'dashboard',
   liquidaciones: [],
   activeLiquidacion: null,
   empleados: [],
@@ -101,6 +101,12 @@ async function login(email, password) {
     localStorage.setItem('payroll_token', res.access_token);
     localStorage.setItem('payroll_user', JSON.stringify(res.user));
 
+    // Asignar tab inicial según rol
+    if (res.user.rol === 'GERENTE') state.currentTab = 'dashboard';
+    else if (res.user.rol === 'ADMIN') state.currentTab = 'liquidar';
+    else state.currentTab = 'mi-volante';
+    localStorage.setItem('payroll_tab', state.currentTab);
+
     closeLoginModal();
     updateUI();
     showToast(`Bienvenido/a, ${res.user.nombre_completo}`);
@@ -114,8 +120,10 @@ async function login(email, password) {
 function logout() {
   state.token = null;
   state.user = null;
+  state.currentTab = 'landing';
   localStorage.removeItem('payroll_token');
   localStorage.removeItem('payroll_user');
+  localStorage.removeItem('payroll_tab');
   updateUI();
   showToast('Has cerrado sesión correctamente', 'info');
 }
@@ -144,6 +152,7 @@ function handleLoginSubmit(e) {
 
 function setTab(tabName) {
   state.currentTab = tabName;
+  localStorage.setItem('payroll_tab', tabName);
   renderNav();
   renderView();
 }
@@ -202,8 +211,12 @@ function updateUI() {
   const btnLogin = document.getElementById('btn-login-modal');
   const roleBadge = document.getElementById('user-role-badge');
   const userName = document.getElementById('user-name');
+  const demoBar = document.getElementById('demo-roles-bar');
 
   if (state.user) {
+    // Ocultar barra de acceso rápido al iniciar sesión
+    if (demoBar) demoBar.classList.add('hidden');
+
     userPill.classList.remove('hidden');
     userPill.classList.add('flex');
     btnLogin.classList.add('hidden');
@@ -213,15 +226,27 @@ function updateUI() {
 
     if (state.user.rol === 'GERENTE') {
       roleBadge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30';
-      if (!['dashboard', 'liquidaciones', 'auditoria'].includes(state.currentTab)) state.currentTab = 'dashboard';
+      if (!['dashboard', 'liquidaciones', 'auditoria'].includes(state.currentTab)) {
+        state.currentTab = 'dashboard';
+        localStorage.setItem('payroll_tab', 'dashboard');
+      }
     } else if (state.user.rol === 'ADMIN') {
       roleBadge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30';
-      if (!['liquidar', 'horas', 'empleados', 'tarifas'].includes(state.currentTab)) state.currentTab = 'liquidar';
+      if (!['liquidar', 'horas', 'empleados', 'tarifas'].includes(state.currentTab)) {
+        state.currentTab = 'liquidar';
+        localStorage.setItem('payroll_tab', 'liquidar');
+      }
     } else {
       roleBadge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
-      if (!['mi-volante', 'registrar-horas', 'mis-horas'].includes(state.currentTab)) state.currentTab = 'mi-volante';
+      if (!['mi-volante', 'registrar-horas', 'mis-horas'].includes(state.currentTab)) {
+        state.currentTab = 'mi-volante';
+        localStorage.setItem('payroll_tab', 'mi-volante');
+      }
     }
   } else {
+    // Mostrar barra de acceso rápido al cerrar sesión o en modo landing
+    if (demoBar) demoBar.classList.remove('hidden');
+
     userPill.classList.add('hidden');
     userPill.classList.remove('flex');
     btnLogin.classList.remove('hidden');
@@ -1500,7 +1525,26 @@ function cerrarGenericModal() {
   document.getElementById('generic-modal').classList.add('hidden');
 }
 
-// ================= BOOTSTRAP =================
-window.addEventListener('DOMContentLoaded', () => {
+// ================= BOOTSTRAP & SESSION PERSISTENCE =================
+async function initApp() {
+  if (state.token) {
+    try {
+      // Sincronizar y validar en tiempo real el usuario y rol contra el backend
+      const freshUser = await apiRequest('/auth/me');
+      state.user = freshUser;
+      localStorage.setItem('payroll_user', JSON.stringify(freshUser));
+    } catch (err) {
+      console.warn('Sesión previa inválida o expirada:', err.message);
+      state.token = null;
+      state.user = null;
+      localStorage.removeItem('payroll_token');
+      localStorage.removeItem('payroll_user');
+      localStorage.removeItem('payroll_tab');
+    }
+  }
   updateUI();
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  initApp();
 });

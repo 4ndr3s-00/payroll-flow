@@ -28,7 +28,7 @@ def record_audit(
         accion,
         entidad,
         entidad_id,
-        json.dumps(datos) if datos else None,
+        json.dumps(datos, default=str) if datos else None,
         clean_ip
     )
     if cur:

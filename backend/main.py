@@ -27,6 +27,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Global Exception Handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception(f"Unhandled error processing request to {request.url.path}: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": f"Error interno del servidor: {str(exc)}",
+            "type": type(exc).__name__
+        }
+    )
+
 # Include Routers
 app.include_router(auth.router)
 app.include_router(liquidaciones.router)
