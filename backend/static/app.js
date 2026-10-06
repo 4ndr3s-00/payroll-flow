@@ -58,6 +58,44 @@ function showToast(message, type = 'success') {
   }, 4000);
 }
 
+async function descargarArchivoAutenticado(endpoint, nombreArchivo) {
+  try {
+    const url = endpoint.startsWith('http') ? endpoint : `${endpoint}`;
+    const sep = url.includes('?') ? '&' : '?';
+    const urlConToken = `${url}${sep}token=${encodeURIComponent(state.token || '')}`;
+
+    showToast(`Generando y descargando ${nombreArchivo}...`, 'info');
+
+    const headers = {};
+    if (state.token) {
+      headers['Authorization'] = `Bearer ${state.token}`;
+    }
+
+    const res = await fetch(urlConToken, {
+      method: 'GET',
+      headers
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || `Error del servidor (${res.status})`);
+    }
+
+    const blob = await res.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = nombreArchivo;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => window.URL.revokeObjectURL(blobUrl), 2000);
+    showToast(`Descarga completada con éxito: ${nombreArchivo}`, 'success');
+  } catch (err) {
+    showToast(`No se pudo descargar: ${err.message}`, 'error');
+  }
+}
+
 async function apiRequest(endpoint, options = {}) {
   const headers = options.headers || {};
   if (state.token) {
@@ -392,14 +430,14 @@ async function renderGerenteDashboard() {
           </p>
         </div>
         <div class="flex items-center space-x-2">
-          <a href="${API_BASE}/reportes/export/csv?anio=2026&mes=9" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-sm transition flex items-center space-x-1.5">
+          <button onclick="descargarArchivoAutenticado('/api/reportes/export/csv?anio=2026&mes=9', 'nomina_2026_09.csv')" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-sm transition flex items-center space-x-1.5 cursor-pointer">
             <i class="fa-solid fa-file-csv text-emerald-600"></i>
             <span>Exportar CSV</span>
-          </a>
-          <a href="${API_BASE}/reportes/export/pdf?anio=2026&mes=9" target="_blank" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition flex items-center space-x-1.5">
+          </button>
+          <button onclick="descargarArchivoAutenticado('/api/reportes/export/pdf?anio=2026&mes=9', 'reporte_nomina_2026_09.pdf')" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition flex items-center space-x-1.5 cursor-pointer">
             <i class="fa-solid fa-file-pdf"></i>
             <span>Descargar Reporte PDF</span>
-          </a>
+          </button>
         </div>
       </div>
 
@@ -1145,10 +1183,10 @@ async function renderOperarioVolante() {
             <p class="text-xs text-slate-500 mt-0.5">Liquidación de Nómina correspondiente a Septiembre 2026</p>
           </div>
 
-          <a href="${API_BASE}/reportes/me/volantes/2026/9/pdf" target="_blank" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition flex items-center space-x-1.5">
+          <button onclick="descargarArchivoAutenticado('/api/reportes/me/volantes/2026/9/pdf', 'volante_mi_pago_2026_09.pdf')" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition flex items-center space-x-1.5 cursor-pointer">
             <i class="fa-solid fa-download"></i>
             <span>Descargar Colilla (PDF)</span>
-          </a>
+          </button>
         </div>
 
         <!-- Voucher Paper UI -->
@@ -1482,6 +1520,7 @@ async function verDetalleLiquidacionModal(id) {
             <th class="py-2.5 px-3 text-right">Bonificación</th>
             <th class="py-2.5 px-3 text-right">Salud + Pensión</th>
             <th class="py-2.5 px-3 text-right font-extrabold text-blue-900">Neto Pagado</th>
+            <th class="py-2.5 px-3 text-center">Volante</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
@@ -1494,6 +1533,12 @@ async function verDetalleLiquidacionModal(id) {
               <td class="py-2.5 px-3 text-right font-medium text-emerald-600">+${formatCOP(d.bonificacion)}</td>
               <td class="py-2.5 px-3 text-right font-medium text-rose-600">-${formatCOP(d.deduccion_salud + d.deduccion_pension)}</td>
               <td class="py-2.5 px-3 text-right font-extrabold text-blue-900">${formatCOP(d.neto)}</td>
+              <td class="py-2.5 px-3 text-center">
+                <button onclick="descargarArchivoAutenticado('/api/reportes/volantes/${d.empleado_id}/2026/9/pdf', 'volante_${d.documento}_2026_09.pdf')" class="px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold inline-flex items-center space-x-1 cursor-pointer transition shadow-xs" title="Descargar Volante individual en PDF">
+                  <i class="fa-solid fa-file-pdf"></i>
+                  <span>PDF</span>
+                </button>
+              </td>
             </tr>
           `).join('')}
         </tbody>

@@ -1,7 +1,7 @@
 import bcrypt
 import jwt
 from datetime import datetime, timedelta, timezone
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Dict, Any, List
 from backend.config import settings
@@ -29,14 +29,22 @@ def create_access_token(data: Dict[str, Any], expires_delta: timedelta | None = 
     encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
     return encoded_jwt
 
-def get_current_user(token_auth: HTTPAuthorizationCredentials | None = Depends(security_scheme)) -> Dict[str, Any]:
-    if not token_auth:
+def get_current_user(
+    token_auth: HTTPAuthorizationCredentials | None = Depends(security_scheme),
+    token_query: str | None = Query(None, alias="token")
+) -> Dict[str, Any]:
+    token = None
+    if token_auth:
+        token = token_auth.credentials
+    elif token_query:
+        token = token_query
+
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="No se proporcionó token de autorización",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    token = token_auth.credentials
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
         user_id = payload.get("sub")

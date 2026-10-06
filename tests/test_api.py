@@ -158,3 +158,54 @@ def test_simulate_single_payroll_contract():
     assert float(data["total_devengado"]) == 2600000.00
     assert float(data["net_pay"]) == 2429560.00
 
+def test_export_pdf_consolidado_con_header_y_query_token():
+    token_gerente = get_auth_token("gerente@empresa.test")
+
+    # 1. Con Header Authorization
+    res_header = client.get(
+        "/api/reportes/export/pdf?anio=2026&mes=9",
+        headers={"Authorization": f"Bearer {token_gerente}"}
+    )
+    assert res_header.status_code == 200
+    assert res_header.headers["content-type"] == "application/pdf"
+    assert res_header.content.startswith(b"%PDF")
+    assert len(res_header.content) > 1000
+
+    # 2. Con Query Param token (?token=...)
+    res_query = client.get(f"/api/reportes/export/pdf?anio=2026&mes=9&token={token_gerente}")
+    assert res_query.status_code == 200
+    assert res_query.headers["content-type"] == "application/pdf"
+    assert res_query.content.startswith(b"%PDF")
+
+def test_export_csv_con_query_token():
+    token_gerente = get_auth_token("gerente@empresa.test")
+    res = client.get(f"/api/reportes/export/csv?anio=2026&mes=9&token={token_gerente}")
+    assert res.status_code == 200
+    assert "text/csv" in res.headers["content-type"]
+    assert b"DOCUMENTO" in res.content
+
+def test_descargar_volante_empleado_admin_gerente():
+    token_admin = get_auth_token("admin01@empresa.test")
+    token_operario = get_auth_token("operario01@empresa.test")
+
+    # Obtener empleado_id de operario01
+    res_me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token_operario}"})
+    emp_id = res_me.json()["empleado_id"]
+
+    # Admin descarga el volante del operario
+    res_admin = client.get(
+        f"/api/reportes/volantes/{emp_id}/2026/9/pdf",
+        headers={"Authorization": f"Bearer {token_admin}"}
+    )
+    assert res_admin.status_code == 200
+    assert res_admin.headers["content-type"] == "application/pdf"
+    assert res_admin.content.startswith(b"%PDF")
+
+    # Operario NO puede usar este endpoint para consultar a otros (403 Forbidden)
+    res_forbidden = client.get(
+        f"/api/reportes/volantes/{emp_id}/2026/9/pdf",
+        headers={"Authorization": f"Bearer {token_operario}"}
+    )
+    assert res_forbidden.status_code == 403
+
+

@@ -375,6 +375,70 @@ def descargar_mi_volante_pdf(
             headers={"Content-Disposition": f"attachment; filename=volante_{row[5]}_{anio}_{mes:02d}.pdf"}
         )
 
+# Descarga de volante por empleado (exclusivo Admin y Gerente)
+@router.get("/volantes/{empleado_id}/{anio}/{mes}/pdf")
+def descargar_volante_empleado_pdf(
+    empleado_id: int,
+    anio: int,
+    mes: int,
+    current_user: Dict[str, Any] = Depends(require_roles(["ADMIN", "GERENTE"]))
+):
+    with get_db_cursor() as cur:
+        cur.execute("""
+            SELECT d.id, d.liquidacion_id, l.anio, l.mes, l.estado,
+                   e.documento, e.nombres, e.apellidos, p.nombre as perfil,
+                   d.salario_base, d.num_hijos, d.horas_totales,
+                   d.devengado, d.bonificacion, d.pct_salud, d.pct_pension,
+                   d.deduccion_salud, d.deduccion_pension, d.neto
+            FROM liquidacion_detalle d
+            JOIN liquidaciones l ON l.id = d.liquidacion_id
+            JOIN empleados e ON e.id = d.empleado_id
+            JOIN perfiles p ON p.id = d.perfil_id
+            WHERE d.empleado_id = %s AND l.anio = %s AND l.mes = %s AND l.estado <> 'ANULADA'
+            ORDER BY l.id DESC LIMIT 1
+        """, (empleado_id, anio, mes))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"No se encontró volante para el empleado {empleado_id} en el periodo solicitado")
+
+        detalle_id = row[0]
+        cur.execute("""
+            SELECT c.tipo, c.concepto, c.cantidad, c.valor_unitario, c.valor_total
+            FROM liquidacion_conceptos c
+            WHERE c.detalle_id = %s
+            ORDER BY c.id
+        """, (detalle_id,))
+        conceptos = [
+            {
+                "tipo": c[0],
+                "concepto": c[1],
+                "cantidad": c[2],
+                "valor_unitario": c[3],
+                "valor_total": c[4]
+            }
+            for c in cur.fetchall()
+        ]
+
+        detalle_dict = {
+            "anio": row[2],
+            "mes": row[3],
+            "documento": row[5],
+            "nombres": row[6],
+            "apellidos": row[7],
+            "perfil": row[8],
+            "salario_base": row[9],
+            "num_hijos": row[10],
+            "horas_totales": row[11],
+            "neto": row[18]
+        }
+
+        pdf_bytes = generar_volante_pdf(detalle_dict, conceptos)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=volante_{row[5]}_{anio}_{mes:02d}.pdf"}
+        )
+
 @router.get("/auditoria")
 def obtener_auditoria(
     limit: int = 200,
