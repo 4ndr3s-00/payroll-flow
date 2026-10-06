@@ -326,3 +326,55 @@ def ejecutar_liquidacion_periodo(
         "total_nomina": float(total_nomina_periodo),
         "total_costo_empresa": float(total_costo_empresa_periodo)
     }
+
+def simular_calculo_individual(
+    hours_worked: Decimal | float,
+    hourly_rate: Decimal | float,
+    num_children: int,
+    arl_rate: Decimal | float = Decimal("0.00522")
+) -> Dict[str, Any]:
+    """
+    Realiza la simulación individual rápida de liquidación según la especificación
+    de reglas de negocio (docs/4-business-rules-financial.md y docs/6-api-contracts.md).
+    """
+    hours = Decimal(str(hours_worked))
+    rate = Decimal(str(hourly_rate))
+    children = int(num_children)
+    arl_r = Decimal(str(arl_rate))
+
+    # 1. Salario Base = Horas * Tarifa
+    base_salary = quantize_money(hours * rate)
+
+    # 2. Escala de Subsidio por Hijos
+    if children <= 0:
+        child_subsidy = Decimal("0.00")
+    elif children == 1:
+        child_subsidy = Decimal("250000.00")
+    elif children == 2:
+        child_subsidy = Decimal("400000.00")
+    else:
+        child_subsidy = Decimal("600000.00")
+
+    # 3. Deducciones
+    health_4pct = quantize_money(base_salary * Decimal("0.04"))
+    pension_4pct = quantize_money(base_salary * Decimal("0.04"))
+    arl = quantize_money(base_salary * arl_r)
+    total_deductions = quantize_money(health_4pct + pension_4pct + arl)
+
+    # 4. Totales
+    total_devengado = quantize_money(base_salary + child_subsidy)
+    net_pay = quantize_money(total_devengado - total_deductions)
+
+    return {
+        "base_salary": base_salary,
+        "child_subsidy": child_subsidy,
+        "deductions": {
+            "health_4pct": health_4pct,
+            "pension_4pct": pension_4pct,
+            "arl": arl,
+            "total_deductions": total_deductions
+        },
+        "total_devengado": total_devengado,
+        "net_pay": net_pay
+    }
+

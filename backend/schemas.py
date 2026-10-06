@@ -193,3 +193,23 @@ class AuditLogItem(BaseModel):
     datos: Optional[Dict[str, Any]] = None
     ip: Optional[str] = None
     creado_en: datetime
+
+# Simulación / API v1 Contract
+class SimulateSingleRequest(BaseModel):
+    hours_worked: Decimal = Field(..., ge=0)
+    hourly_rate: Decimal = Field(..., gt=0)
+    num_children: int = Field(0, ge=0)
+    arl_rate: Decimal = Field(Decimal("0.00522"), ge=0)
+
+class DeductionsDetail(BaseModel):
+    health_4pct: Decimal
+    pension_4pct: Decimal
+    arl: Decimal
+    total_deductions: Decimal
+
+class SimulateSingleResponse(BaseModel):
+    base_salary: Decimal
+    child_subsidy: Decimal
+    deductions: DeductionsDetail
+    total_devengado: Decimal
+    net_pay: Decimal

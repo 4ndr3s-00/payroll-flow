@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 import os
 import logging
-from backend.routers import auth, liquidaciones, horas, empleados, catalogos, reportes
+from backend.routers import auth, liquidaciones, horas, empleados, catalogos, reportes, payroll_v1
 from backend.database import get_db_cursor
 
 logging.basicConfig(level=logging.INFO)
@@ -27,6 +27,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Anti-cache middleware for SPA static files
+@app.middleware("http")
+async def add_no_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path.endswith(".html") or path.endswith(".js") or path == "/" or path == "":
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 # Global Exception Handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -46,6 +57,7 @@ app.include_router(horas.router)
 app.include_router(empleados.router)
 app.include_router(catalogos.router)
 app.include_router(reportes.router)
+app.include_router(payroll_v1.router)
 
 # Healthcheck
 @app.get("/api/health", tags=["Salud"])

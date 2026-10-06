@@ -211,12 +211,8 @@ function updateUI() {
   const btnLogin = document.getElementById('btn-login-modal');
   const roleBadge = document.getElementById('user-role-badge');
   const userName = document.getElementById('user-name');
-  const demoBar = document.getElementById('demo-roles-bar');
 
   if (state.user) {
-    // Ocultar barra de acceso rápido al iniciar sesión
-    if (demoBar) demoBar.classList.add('hidden');
-
     userPill.classList.remove('hidden');
     userPill.classList.add('flex');
     btnLogin.classList.add('hidden');
@@ -244,9 +240,6 @@ function updateUI() {
       }
     }
   } else {
-    // Mostrar barra de acceso rápido al cerrar sesión o en modo landing
-    if (demoBar) demoBar.classList.remove('hidden');
-
     userPill.classList.add('hidden');
     userPill.classList.remove('flex');
     btnLogin.classList.remove('hidden');
@@ -385,6 +378,7 @@ async function renderGerenteDashboard() {
 
   const t = rep.totales;
   const isPrelim = rep.es_preliminar;
+  const distribucionHijos = rep.distribucion_hijos || [];
 
   return `
     <div class="space-y-6">
@@ -392,7 +386,7 @@ async function renderGerenteDashboard() {
       <!-- Top Title & Controls -->
       <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight">Dashboard Ejecutivo de Nómina</h2>
+          <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight">Dashboard Ejecutivo de Nómina y Analítica</h2>
           <p class="text-xs text-slate-500 mt-0.5">
             Periodo: Septiembre 2026 · ${isPrelim ? '<span class="text-amber-600 font-semibold">(Vista Preliminar - Pendiente de Aprobación)</span>' : '<span class="text-emerald-600 font-semibold">(Nómina Oficial Aprobada)</span>'}
           </p>
@@ -409,61 +403,89 @@ async function renderGerenteDashboard() {
         </div>
       </div>
 
-      <!-- Financial Metric Cards -->
+      <!-- 4 Executive KPI Cards (docs/8-analytics-and-kpis.md) -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
+        <!-- KPI 1: Costo Total Nómina (Presupuesto Total) -->
         <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
           <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Costo Real Empresa</span>
+            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Presupuesto Total Nómina</span>
             <div class="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-bold">
               <i class="fa-solid fa-building-columns"></i>
             </div>
           </div>
           <div class="text-2xl font-extrabold text-slate-900">${formatCOP(t.costo_total_empresa)}</div>
           <div class="text-[11px] text-blue-600 font-semibold mt-1">
-            +${t.sobrecosto_patronal_pct}% sobre el neto pagado
+            Neto: ${formatCOP(t.neto_pagado)} (+${t.sobrecosto_patronal_pct}% aportes)
           </div>
         </div>
 
+        <!-- KPI 2: Total Bonificaciones Familiares Desembolsadas -->
         <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
           <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Neto a Empleados</span>
+            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Subsidios Familiares</span>
             <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center text-sm font-bold">
-              <i class="fa-solid fa-money-check-dollar"></i>
+              <i class="fa-solid fa-children"></i>
             </div>
           </div>
-          <div class="text-2xl font-extrabold text-slate-900">${formatCOP(t.neto_pagado)}</div>
+          <div class="text-2xl font-extrabold text-emerald-600">${formatCOP(t.bonificaciones)}</div>
           <div class="text-[11px] text-slate-500 mt-1">
-            Consignación en cuentas bancarias
+            Impacto de bienestar familiar en colaboradores
           </div>
         </div>
 
+        <!-- KPI 3: Masa Salarial Base Devengada -->
         <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
           <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Carga Prestacional</span>
+            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Masa Salarial Devengada</span>
             <div class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-bold">
-              <i class="fa-solid fa-umbrella"></i>
+              <i class="fa-solid fa-sack-dollar"></i>
             </div>
           </div>
-          <div class="text-2xl font-extrabold text-slate-900">${formatCOP(t.costo_patronal)}</div>
+          <div class="text-2xl font-extrabold text-slate-900">${formatCOP(t.devengado)}</div>
           <div class="text-[11px] text-slate-500 mt-1">
-            Aportes seguridad social + provisiones
+            Remuneración ordinaria por horas laboradas
           </div>
         </div>
 
+        <!-- KPI 4: Promedio de Horas Laboradas por Colaborador (H-bar) -->
         <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
           <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Colaboradores</span>
-            <div class="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center text-sm font-bold">
-              <i class="fa-solid fa-users"></i>
+            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Promedio Horas (H̄)</span>
+            <div class="w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center text-sm font-bold">
+              <i class="fa-solid fa-business-time"></i>
             </div>
           </div>
-          <div class="text-2xl font-extrabold text-slate-900">${t.empleados} colaboradores</div>
+          <div class="text-2xl font-extrabold text-slate-900">${t.promedio_horas || 0} hrs <span class="text-xs text-slate-400 font-normal">/ colab</span></div>
           <div class="text-[11px] text-slate-500 mt-1">
-            80 Operarios · 4 Admins · 1 Gerente
+            Total horas: ${t.total_horas || 0} hrs (${t.empleados} activos)
           </div>
         </div>
 
+      </div>
+
+      <!-- Gráfico C / Tramos de Subsidio Familiar (docs/8-analytics-and-kpis.md) -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="font-bold text-slate-800 text-sm flex items-center space-x-2">
+              <i class="fa-solid fa-chart-column text-blue-600"></i>
+              <span>Impacto del Subsidio Familiar por Tramos de Hijos</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">Distribución de colaboradores y desembolso por escala: $0 (0 hijos), $250k (1 hijo), $400k (2 hijos), $600k (≥3 hijos)</p>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          ${distribucionHijos.length > 0 ? distribucionHijos.map(dh => `
+            <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+              <div class="text-xs font-bold text-slate-500 uppercase">${dh.tramo}</div>
+              <div class="text-xl font-bold text-slate-800 mt-1">${dh.empleados} <span class="text-xs text-slate-400 font-normal">colaboradores</span></div>
+              <div class="text-sm font-semibold text-emerald-600 mt-1">${formatCOP(dh.total_subsidio)}</div>
+            </div>
+          `).join('') : `
+            <div class="col-span-4 text-center py-4 text-slate-400 text-xs">Sin registros de colaboradores en el periodo actual.</div>
+          `}
+        </div>
       </div>
 
       <!-- Breakdown By Profile Table -->
@@ -519,9 +541,142 @@ async function renderGerenteDashboard() {
         </div>
       </div>
 
+      <!-- Simulador Rápido de Liquidación Individual (docs/6-api-contracts.md) -->
+      <div class="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-6 text-white shadow-xl border border-slate-700">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="font-bold text-base flex items-center space-x-2 text-white">
+              <i class="fa-solid fa-calculator text-blue-400"></i>
+              <span>Simulador Individual en Tiempo Real (API v1 Contract)</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">Calcula al instante horas, tarifas, escala de hijos y deducciones mediante <code class="text-blue-300 font-mono">POST /api/v1/payroll/simulate-single</code> sin alterar la base de datos.</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <!-- Form Inputs -->
+          <div class="lg:col-span-5 space-y-3 bg-slate-800/60 p-4 rounded-xl border border-slate-700/60">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Horas Trabajadas (H)</label>
+              <input type="number" id="sim-horas" value="200" min="0" step="1" oninput="simularPayrollLive()" class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Tarifa por Hora ($ COP)</label>
+              <input type="number" id="sim-tarifa" value="10000" min="1" step="500" oninput="simularPayrollLive()" class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Número de Hijos Acreditados</label>
+              <input type="number" id="sim-hijos" value="4" min="0" step="1" oninput="simularPayrollLive()" class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Tasa ARL (Clase I = 0.00522, Clase II = 0.01044)</label>
+              <input type="number" id="sim-arl" value="0.00522" min="0" step="0.00001" oninput="simularPayrollLive()" class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:ring-2 focus:ring-blue-500">
+            </div>
+            <button onclick="simularPayrollLive()" class="w-full mt-2 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition flex items-center justify-center space-x-2">
+              <i class="fa-solid fa-play text-xs"></i>
+              <span>Calcular Simulación</span>
+            </button>
+          </div>
+
+          <!-- Result Panel -->
+          <div class="lg:col-span-7 bg-slate-800/40 p-4 rounded-xl border border-slate-700/60 space-y-3">
+            <div class="text-xs font-bold uppercase tracking-wider text-slate-400">Resultado Desglosado</div>
+            <div class="grid grid-cols-2 gap-3 text-xs">
+              <div class="p-2.5 rounded-lg bg-slate-900/60 border border-slate-700/40">
+                <span class="text-slate-400 block text-[11px]">Salario Base</span>
+                <span id="sim-res-base" class="text-sm font-bold text-white">$2,000,000 COP</span>
+              </div>
+              <div class="p-2.5 rounded-lg bg-slate-900/60 border border-slate-700/40">
+                <span class="text-slate-400 block text-[11px]">Subsidio por Hijos</span>
+                <span id="sim-res-subsidio" class="text-sm font-bold text-emerald-400">+$600,000 COP</span>
+              </div>
+              <div class="p-2.5 rounded-lg bg-slate-900/60 border border-slate-700/40">
+                <span class="text-slate-400 block text-[11px]">Total Devengado</span>
+                <span id="sim-res-devengado" class="text-sm font-bold text-blue-300">$2,600,000 COP</span>
+              </div>
+              <div class="p-2.5 rounded-lg bg-slate-900/60 border border-slate-700/40">
+                <span class="text-slate-400 block text-[11px]">Total Retenciones (8% + ARL)</span>
+                <span id="sim-res-deducciones" class="text-sm font-bold text-rose-400">-$170,440 COP</span>
+              </div>
+            </div>
+
+            <!-- Deductions breakdown detail -->
+            <div class="p-2.5 rounded-lg bg-slate-900/40 border border-slate-700/30 text-[11px] space-y-1 text-slate-300">
+              <div class="flex justify-between">
+                <span>Salud (4%):</span> <span id="sim-res-salud" class="font-medium">$80,000 COP</span>
+              </div>
+              <div class="flex justify-between">
+                <span>Pensión (4%):</span> <span id="sim-res-pension" class="font-medium">$80,000 COP</span>
+              </div>
+              <div class="flex justify-between">
+                <span>ARL:</span> <span id="sim-res-arl" class="font-medium">$10,440 COP</span>
+              </div>
+            </div>
+
+            <!-- Grand Total Net Pay -->
+            <div class="p-3 rounded-xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-between">
+              <div>
+                <span class="text-[11px] font-bold text-blue-300 uppercase tracking-wider block">Neto a Pagar Simulado</span>
+                <span class="text-[10px] text-slate-400">Total Devengado - Total Deducciones</span>
+              </div>
+              <div id="sim-res-neto" class="text-xl font-extrabold text-emerald-300">
+                $2,429,560 COP
+              </div>
+            </div>
+          </div>
+        </div>
     </div>
   `;
 }
+
+window.simularPayrollLive = async function() {
+  const horasEl = document.getElementById('sim-horas');
+  const tarifaEl = document.getElementById('sim-tarifa');
+  const hijosEl = document.getElementById('sim-hijos');
+  const arlEl = document.getElementById('sim-arl');
+
+  if (!horasEl || !tarifaEl || !hijosEl || !arlEl) return;
+
+  const horas = parseFloat(horasEl.value) || 0;
+  const tarifa = parseFloat(tarifaEl.value) || 0;
+  const hijos = parseInt(hijosEl.value, 10) || 0;
+  const arl = parseFloat(arlEl.value) || 0.00522;
+
+  try {
+    const res = await fetch('/api/v1/payroll/simulate-single', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hours_worked: horas,
+        hourly_rate: tarifa,
+        num_children: hijos,
+        arl_rate: arl
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Error en simulación');
+
+    const resBase = document.getElementById('sim-res-base');
+    const resSubsidio = document.getElementById('sim-res-subsidio');
+    const resDevengado = document.getElementById('sim-res-devengado');
+    const resSalud = document.getElementById('sim-res-salud');
+    const resPension = document.getElementById('sim-res-pension');
+    const resArl = document.getElementById('sim-res-arl');
+    const resDeducciones = document.getElementById('sim-res-deducciones');
+    const resNeto = document.getElementById('sim-res-neto');
+
+    if (resBase) resBase.textContent = formatCOP(data.base_salary);
+    if (resSubsidio) resSubsidio.textContent = '+' + formatCOP(data.child_subsidy);
+    if (resDevengado) resDevengado.textContent = formatCOP(data.total_devengado);
+    if (resSalud) resSalud.textContent = formatCOP(data.deductions.health_4pct);
+    if (resPension) resPension.textContent = formatCOP(data.deductions.pension_4pct);
+    if (resArl) resArl.textContent = formatCOP(data.deductions.arl);
+    if (resDeducciones) resDeducciones.textContent = '-' + formatCOP(data.deductions.total_deductions);
+    if (resNeto) resNeto.textContent = formatCOP(data.net_pay);
+  } catch (err) {
+    console.error('Error simulación:', err);
+  }
+};
 
 async function renderGerenteLiquidaciones() {
   const liquidaciones = await apiRequest('/liquidaciones');

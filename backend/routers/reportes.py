@@ -76,13 +76,59 @@ def reporte_consolidado(
         # Sobrecosto patronal %
         sobrecosto_pct = ((total_costo_empresa - total_neto) / total_neto * 100) if total_neto > 0 else 0.0
 
+        # KPIs adicionales según docs/8-analytics-and-kpis.md (Promedio de Horas y Distribución Hijos)
+        cur.execute("""
+            SELECT COALESCE(SUM(d.horas_totales), 0),
+                   COALESCE(AVG(d.horas_totales), 0)
+            FROM liquidaciones l
+            JOIN liquidacion_detalle d ON d.liquidacion_id = l.id
+            WHERE l.anio = %s AND l.mes = %s AND l.estado <> 'ANULADA'
+        """, (anio, mes))
+        h_row = cur.fetchone()
+        total_horas = float(h_row[0]) if h_row else 0.0
+        promedio_horas = round(float(h_row[1]), 2) if h_row else 0.0
+
+        cur.execute("""
+            SELECT 
+                CASE 
+                    WHEN d.num_hijos = 0 THEN '0 hijos'
+                    WHEN d.num_hijos = 1 THEN '1 hijo'
+                    WHEN d.num_hijos = 2 THEN '2 hijos'
+                    ELSE '3+ hijos'
+                END as tramo,
+                COUNT(d.id) as empleados,
+                COALESCE(SUM(d.bonificacion), 0) as total_subsidio
+            FROM liquidaciones l
+            JOIN liquidacion_detalle d ON d.liquidacion_id = l.id
+            WHERE l.anio = %s AND l.mes = %s AND l.estado <> 'ANULADA'
+            GROUP BY 
+                CASE 
+                    WHEN d.num_hijos = 0 THEN '0 hijos'
+                    WHEN d.num_hijos = 1 THEN '1 hijo'
+                    WHEN d.num_hijos = 2 THEN '2 hijos'
+                    ELSE '3+ hijos'
+                END
+            ORDER BY tramo
+        """, (anio, mes))
+        distribucion_hijos = [
+            {
+                "tramo": dh[0],
+                "empleados": int(dh[1]),
+                "total_subsidio": float(dh[2])
+            }
+            for dh in cur.fetchall()
+        ]
+
         return {
             "anio": anio,
             "mes": mes,
             "es_preliminar": es_preliminar,
             "perfiles": res,
+            "distribucion_hijos": distribucion_hijos,
             "totales": {
                 "empleados": total_empleados,
+                "total_horas": total_horas,
+                "promedio_horas": promedio_horas,
                 "devengado": total_devengado,
                 "bonificaciones": total_bonificaciones,
                 "deducciones_empleado": total_deducciones,
@@ -92,6 +138,7 @@ def reporte_consolidado(
                 "sobrecosto_patronal_pct": round(sobrecosto_pct, 2)
             }
         }
+
 
 @router.get("/export/csv")
 def exportar_csv(

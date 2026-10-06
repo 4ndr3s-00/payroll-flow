@@ -132,3 +132,29 @@ def test_full_liquidation_cycle_and_ca02():
     assert res_csv.status_code == 200
     assert "text/csv" in res_csv.headers["content-type"]
     assert b"1000000006" in res_csv.content
+
+    # 8. Verificación de nuevos KPIs en reporte consolidado (docs/8-analytics-and-kpis.md)
+    assert "promedio_horas" in rep_data["totales"]
+    assert "distribucion_hijos" in rep_data
+    assert len(rep_data["distribucion_hijos"]) > 0
+
+def test_simulate_single_payroll_contract():
+    """Prueba del contrato REST especificado en docs/6-api-contracts.md: POST /api/v1/payroll/simulate-single"""
+    payload = {
+        "hours_worked": 200,
+        "hourly_rate": 10000.00,
+        "num_children": 4,
+        "arl_rate": 0.00522
+    }
+    res = client.post("/api/v1/payroll/simulate-single", json=payload)
+    assert res.status_code == 200, f"Error en simulate-single: {res.text}"
+    data = res.json()
+    assert float(data["base_salary"]) == 2000000.00
+    assert float(data["child_subsidy"]) == 600000.00
+    assert float(data["deductions"]["health_4pct"]) == 80000.00
+    assert float(data["deductions"]["pension_4pct"]) == 80000.00
+    assert float(data["deductions"]["arl"]) == 10440.00
+    assert float(data["deductions"]["total_deductions"]) == 170440.00
+    assert float(data["total_devengado"]) == 2600000.00
+    assert float(data["net_pay"]) == 2429560.00
+

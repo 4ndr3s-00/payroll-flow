@@ -87,3 +87,81 @@ def test_rn05_neto_formula_consistency():
         for hijos in [0, 1, 2, 3]:
             r = calcular_liquidacion_empleado(sal, hijos)
             assert r["neto"] == r["devengado"] + r["bonificacion"] - r["deduccion_salud"] - r["deduccion_pension"]
+
+
+# ==============================================================================
+# QA Financial Test Matrix (docs/7-qa-financial-test-plan.md)
+# ==============================================================================
+from backend.services.calculation import simular_calculo_individual
+
+def test_tc01_operario_estandar_cuatro_hijos():
+    """TC-01: Operario estándar (4 hijos) -> 200h, 10.000, 4 hijos, ARL 0.522% -> Neto 2.429.560"""
+    res = simular_calculo_individual(hours_worked=200, hourly_rate=10000, num_children=4, arl_rate=0.00522)
+    assert res["base_salary"] == Decimal('2000000.00')
+    assert res["child_subsidy"] == Decimal('600000.00')
+    assert res["deductions"]["health_4pct"] == Decimal('80000.00')
+    assert res["deductions"]["pension_4pct"] == Decimal('80000.00')
+    assert res["deductions"]["arl"] == Decimal('10440.00')
+    assert res["deductions"]["total_deductions"] == Decimal('170440.00')
+    assert res["total_devengado"] == Decimal('2600000.00')
+    assert res["net_pay"] == Decimal('2429560.00')
+
+def test_tc02_tecnico_sin_hijos():
+    """TC-02: Técnico sin hijos -> 160h, 12.500, 0 hijos, ARL 0.522% -> Neto 1.829.560"""
+    res = simular_calculo_individual(hours_worked=160, hourly_rate=12500, num_children=0, arl_rate=0.00522)
+    assert res["base_salary"] == Decimal('2000000.00')
+    assert res["child_subsidy"] == Decimal('0.00')
+    assert res["deductions"]["health_4pct"] == Decimal('80000.00')
+    assert res["deductions"]["pension_4pct"] == Decimal('80000.00')
+    assert res["deductions"]["arl"] == Decimal('10440.00')
+    assert res["deductions"]["total_deductions"] == Decimal('170440.00')
+    assert res["total_devengado"] == Decimal('2000000.00')
+    assert res["net_pay"] == Decimal('1829560.00')
+
+def test_tc03_especialista_un_hijo():
+    """TC-03: Especialista con 1 hijo -> 180h, 20.000, 1 hijo, ARL 1.044% -> Neto 3.524.416"""
+    res = simular_calculo_individual(hours_worked=180, hourly_rate=20000, num_children=1, arl_rate=0.01044)
+    assert res["base_salary"] == Decimal('3600000.00')
+    assert res["child_subsidy"] == Decimal('250000.00')
+    assert res["deductions"]["health_4pct"] == Decimal('144000.00')
+    assert res["deductions"]["pension_4pct"] == Decimal('144000.00')
+    assert res["deductions"]["arl"] == Decimal('37584.00')
+    assert res["deductions"]["total_deductions"] == Decimal('325584.00')
+    assert res["total_devengado"] == Decimal('3850000.00')
+    assert res["net_pay"] == Decimal('3524416.00')
+
+def test_tc04_operario_dos_hijos():
+    """TC-04: Operario con 2 hijos -> 192h, 8.500, 2 hijos, ARL 0.522% -> Neto ~1.892.921"""
+    res = simular_calculo_individual(hours_worked=192, hourly_rate=8500, num_children=2, arl_rate=0.00522)
+    assert res["base_salary"] == Decimal('1632000.00')
+    assert res["child_subsidy"] == Decimal('400000.00')
+    assert res["deductions"]["health_4pct"] == Decimal('65280.00')
+    assert res["deductions"]["pension_4pct"] == Decimal('65280.00')
+    assert round(res["deductions"]["arl"]) == Decimal('8519')
+    assert round(res["deductions"]["total_deductions"]) == Decimal('139079')
+    assert round(res["net_pay"]) == Decimal('1892921')
+
+def test_tc05_colaborador_tres_hijos_exactos():
+    """TC-05: Colaborador con 3 hijos (exactos) -> 160h, 15.000, 3 hijos, ARL 0.522% -> Neto 2.795.472"""
+    res = simular_calculo_individual(hours_worked=160, hourly_rate=15000, num_children=3, arl_rate=0.00522)
+    assert res["base_salary"] == Decimal('2400000.00')
+    assert res["child_subsidy"] == Decimal('600000.00')
+    assert res["deductions"]["health_4pct"] == Decimal('96000.00')
+    assert res["deductions"]["pension_4pct"] == Decimal('96000.00')
+    assert res["deductions"]["arl"] == Decimal('12528.00')
+    assert res["deductions"]["total_deductions"] == Decimal('204528.00')
+    assert res["total_devengado"] == Decimal('3000000.00')
+    assert res["net_pay"] == Decimal('2795472.00')
+
+def test_tc06_horas_cero_incapacidad():
+    """TC-06: Horas Cero (Incapacidad o permiso) -> 0h, 15.000, 2 hijos, ARL 0.522% -> Neto 400.000"""
+    res = simular_calculo_individual(hours_worked=0, hourly_rate=15000, num_children=2, arl_rate=0.00522)
+    assert res["base_salary"] == Decimal('0.00')
+    assert res["child_subsidy"] == Decimal('400000.00')
+    assert res["deductions"]["health_4pct"] == Decimal('0.00')
+    assert res["deductions"]["pension_4pct"] == Decimal('0.00')
+    assert res["deductions"]["arl"] == Decimal('0.00')
+    assert res["deductions"]["total_deductions"] == Decimal('0.00')
+    assert res["total_devengado"] == Decimal('400000.00')
+    assert res["net_pay"] == Decimal('400000.00')
+
