@@ -83,6 +83,22 @@ def registrar_horas(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     ip = request.client.host if request.client else "127.0.0.1"
+    hoy = date.today()
+
+    # 1. Validación de fechas futuras: No se permiten fechas posteriores a hoy
+    if payload.fecha > hoy:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Fecha inválida ({payload.fecha}). No se permite registrar horas de días futuros. La fecha máxima permitida es hoy ({hoy})."
+        )
+
+    # 2. Validación de mes anterior: No se permite registrar horas de meses anteriores al mes en curso
+    primer_dia_mes_actual = date(hoy.year, hoy.month, 1)
+    if payload.fecha < primer_dia_mes_actual:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Fecha inválida ({payload.fecha}). No se permite registrar horas del mes anterior o anteriores. Solo se admiten registros del mes en curso a partir del {primer_dia_mes_actual}."
+        )
     
     # Determinar qué empleado se registra
     if current_user["rol"] == "OPERARIO":

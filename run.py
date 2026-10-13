@@ -21,7 +21,7 @@ def verificar_base_de_datos():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))
-    host = os.getenv("HOST", "0.0.0.0")
+    host = os.getenv("HOST", "127.0.0.1")
     print("=" * 65)
     print("  PayrollFlow - Sistema de Liquidacion de Nomina Financiera (SENA)")
     print("=" * 65)

@@ -261,6 +261,43 @@ function demoLogin(email) {
   login(email, 'Cambiar123*');
 }
 
+function copyCred(text, elem) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast(`Copiado al portapapeles: ${text}`, 'info');
+    }).catch(() => {
+      fallbackCopy(text);
+    });
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showToast(`Copiado: ${text}`, 'info');
+  } catch (err) {
+    showToast(`No se pudo copiar automáticamente`, 'error');
+  }
+  ta.remove();
+}
+
+function fillAndCopy(email, elem) {
+  const emailInput = document.getElementById('login-email');
+  const pwInput = document.getElementById('login-password');
+  if (emailInput) emailInput.value = email;
+  if (pwInput) pwInput.value = 'Cambiar123*';
+  copyCred(email, elem);
+}
+
 function openLoginModal() {
   document.getElementById('modal-login').classList.remove('hidden');
   document.getElementById('login-error').classList.add('hidden');
@@ -1418,20 +1455,37 @@ async function renderOperarioRegistroHoras() {
   const tiposHora = await apiRequest('/catalogos/tipos-hora');
   const jornadas = await apiRequest('/catalogos/jornadas');
 
+  // Calcular límites de fecha: mes en curso hasta el día de hoy
+  const hoy = new Date();
+  const anio = hoy.getFullYear();
+  const mes = String(hoy.getMonth() + 1).padStart(2, '0');
+  const dia = String(hoy.getDate()).padStart(2, '0');
+  const fechaHoy = `${anio}-${mes}-${dia}`;
+  const fechaMin = `${anio}-${mes}-01`;
+
   return `
     <div class="max-w-xl mx-auto space-y-6">
       <div>
         <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight">Registro Rápido de Horas</h2>
-        <p class="text-xs text-slate-500 mt-0.5">Ingresa tus horas trabajadas en ≤ 3 clics según el requerimiento de usabilidad.</p>
+        <p class="text-xs text-slate-500 mt-0.5">Ingresa tus horas trabajadas del mes en curso hasta el día de hoy.</p>
       </div>
 
       <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8">
         <form onsubmit="handleRegistroHorasSubmit(event)" class="space-y-4">
           
           <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1">Fecha Laborada</label>
-            <input type="date" id="hora-fecha" required value="2026-10-06"
-              class="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none transition">
+            <label class="block text-xs font-semibold text-slate-700 mb-1">
+              Fecha Laborada <span class="text-blue-600 font-normal">(Mes en curso hasta hoy)</span>
+            </label>
+            <input type="date" id="hora-fecha" required
+              min="${fechaMin}"
+              max="${fechaHoy}"
+              value="${fechaHoy}"
+              class="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none transition font-medium">
+            <p class="text-[11px] text-slate-500 mt-1 flex items-center space-x-1.5">
+              <i class="fa-solid fa-circle-info text-blue-500 text-xs"></i>
+              <span>Válido desde el <strong>${fechaMin}</strong> hasta hoy <strong>${fechaHoy}</strong> (No se permiten días futuros ni meses anteriores).</span>
+            </p>
           </div>
 
           <div class="grid grid-cols-2 gap-4">
@@ -1701,6 +1755,20 @@ async function handleRegistroHorasSubmit(e) {
   const jornada_id = parseInt(document.getElementById('hora-jornada').value);
   const horas = parseFloat(document.getElementById('hora-cantidad').value);
 
+// Validación estricta: solo se permite la fecha de hoy
+  const hoy = new Date();
+  const anio = hoy.getFullYear();
+  const mes = String(hoy.getMonth() + 1).padStart(2, '0');
+  const dia = String(hoy.getDate()).padStart(2, '0');
+  const hoyStr = `${anio}-${mes}-${dia}`;
+
+  if (!fecha) {
+    return showToast('Debes seleccionar una fecha laborada.', 'error');
+  }
+  if (fecha !== hoyStr) {
+    return showToast(`Fecha inválida (${fecha}): Solo se permite registrar horas correspondientes al día de hoy (${hoyStr}).`, 'error');
+  }
+
   try {
     await apiRequest('/horas', {
       method: 'POST',
@@ -1709,9 +1777,10 @@ async function handleRegistroHorasSubmit(e) {
     showToast('Horas registradas correctamente (Pendientes de revisión)');
     setTab('mis-horas');
   } catch (err) {
-    showToast(err.message, 'error');
+    showToast('Error al registrar las horas.', 'error');
+  }t(err.message, 'error');
   }
-}
+
 
 function abrirModalNuevoEmpleado() {
   const modal = document.getElementById('generic-modal');
