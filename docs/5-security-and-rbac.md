@@ -1,85 +1,66 @@
-# 🔒 Seguridad, Control de Acceso (RBAC) y Políticas RLS
+# 🔒 Seguridad, Control de Acceso (RBAC) y Auditoría
 
-En un sistema financiero de nómina, la confidencialidad salarial y la segregación de funciones son requisitos indispensables. Este documento define la arquitectura de seguridad basada en **Supabase Auth** y **PostgreSQL Row Level Security (RLS)**.
-
----
-
-## 1. Definición de Roles
-
-1. **`gerente` (Executive / Approver):**
-   - Acceso a dashboards agregados, analíticas de nómina, aprobación formal y reportes contables globales.
-   - Restricción: No puede alterar directamente tarifas operativas ni crear empleados individuales para evitar conflictos de interés.
-2. **`admin` (Human Resources / Operator):**
-   - Configuración de tarifas dinámicas por perfil.
-   - Creación y edición de fichas de colaboradores.
-   - Ingreso de novedades y horas laboradas.
-   - Disparo de la corrida de liquidación en estado `BORRADOR`.
-   - Restricción: No puede auto-aprobar definitivamente la nómina para desembolso sin el visto bueno de Gerencia.
-3. **`operario` (Colaborador / Empleado):**
-   - Acceso al portal de autoservicio.
-   - Visualización exclusiva de sus propias horas y sus desprendibles de nómina emitidos.
-   - Restricción estricta: Bloqueado totalmente de ver datos de otros compañeros, totales de nómina general o catálogos de tarifas.
+En un sistema financiero de nómina, la confidencialidad salarial y la segregación de funciones son requisitos indispensables. Este documento formaliza la arquitectura de seguridad basada en **JWT (JSON Web Tokens)** con encriptación **bcrypt**, middleware de roles en **FastAPI** e inmutabilidad en **PostgreSQL 16**.
 
 ---
 
-## 2. Matriz de Permisos (CRUD)
+## 1. Definición de Roles del Sistema (RBAC)
 
-| Tabla | Operario | Admin | Gerente |
+1. **👑 `GERENTE` (Aprobador Ejecutivo):**
+   - Acceso exclusivo al Dashboard Estratégico y analíticas financieras consolidadas.
+   - Autoridad para **Aprobar** (`PATCH /api/liquidaciones/{id}/aprobar`) o **Rechazar** (`PATCH /api/liquidaciones/{id}/rechazar`) con motivo formal las liquidaciones de nómina.
+   - Consulta de la bitácora de auditoría en vivo (`GET /api/reportes/auditoria`).
+   - Exportación de informes consolidados de nómina en PDF y CSV.
+   - *Restricción:* No puede modificar tarifas horarias ni crear empleados para prevenir conflictos de interés.
+
+2. **💼 `ADMIN` (Operador de Nómina y RRHH):**
+   - Parametrización de perfiles laborales, tarifas base y reglas temporales.
+   - Gestión integral del catálogo de colaboradores (altas, modificaciones, número de hijos).
+   - Aprobación masiva o individual de novedades de horas reportadas.
+   - Disparo del motor de liquidación batch (`POST /api/liquidaciones`).
+   - Anulación justificada de liquidaciones para reliquidación (`PATCH /api/liquidaciones/{id}/anular`).
+   - *Restricción:* No puede auto-aprobar definitivamente una liquidación para desembolso financiero.
+
+3. **👷 `OPERARIO` (Colaborador / Empleado):**
+   - Acceso al autoservicio de colaborador.
+   - Registro de novedades de horas trabajadas en $\le$ 3 clics con control de calendario limitado al mes actual (**RN-08**).
+   - Visualización y descarga individual de sus desprendibles de pago en PDF.
+   - *Restricción estricta:* Bloqueado de consultar liquidaciones globales, tarifas de otros cargos o datos de compañeros.
+
+---
+
+## 2. Matriz de Permisos por Endpoint
+
+| Endpoint / Módulo | Operario | Admin | Gerente |
 | :--- | :---: | :---: | :---: |
-| `profiles` | ❌ | Lectura / Escritura | Solo Lectura |
-| `employees` | ❌ | Lectura / Escritura | Solo Lectura |
-| `time_logs` | Lectura (Solo propio) | Lectura / Escritura | Lectura |
-| `payroll_runs` | ❌ | Creación / Lectura | Lectura / Aprobación |
-| `payroll_details` | Lectura (Solo propio) | Lectura / Escritura | Lectura (Todo) |
+| `POST /api/auth/login` | ✅ Público | ✅ Público | ✅ Público |
+| `GET /api/auth/me` | ✅ Propio | ✅ Propio | ✅ Propio |
+| `POST /api/horas/registro` | ✅ Propio (RN-08) | ✅ Sí | ❌ |
+| `GET /api/horas/mis-horas` | ✅ Propio | ✅ Propio | ✅ Propio |
+| `GET /api/horas/pendientes` | ❌ | ✅ Sí | ❌ |
+| `POST /api/horas/aprobar-lote` | ❌ | ✅ Sí | ❌ |
+| `POST /api/liquidaciones` | ❌ | ✅ Sí | ❌ |
+| `PATCH /api/liquidaciones/{id}/anular`| ❌ | ✅ Sí | ❌ |
+| `PATCH /api/liquidaciones/{id}/aprobar`| ❌ | ❌ | ✅ Exclusivo |
+| `PATCH /api/liquidaciones/{id}/rechazar`| ❌ | ❌ | ✅ Exclusivo |
+| `GET /api/reportes/resumen-ejecutivo` | ❌ | ❌ | ✅ Sí |
+| `GET /api/reportes/auditoria` | ❌ | ❌ | ✅ Sí |
+| `GET /api/reportes/colilla/{id}/pdf` | ✅ Propia | ✅ Sí | ✅ Sí |
 
 ---
 
-## 3. Implementación de Políticas RLS (PostgreSQL / Supabase)
+## 3. Seguridad de Autenticación y Criptografía
 
-Para garantizar que nadie pueda eludir las reglas desde el cliente frontend, la base de datos aplicará las siguientes políticas RLS:
-
-```sql
--- 1. Habilitar RLS en tablas críticas
-ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
-ALTER TABLE payroll_details ENABLE ROW LEVEL SECURITY;
-ALTER TABLE payroll_runs ENABLE ROW LEVEL SECURITY;
-
--- 2. El Operario solo puede consultar su propio detalle de nómina
-CREATE POLICY "Operarios ven su propio recibo"
-ON payroll_details
-FOR SELECT
-USING (
-  employee_id IN (
-    SELECT id FROM employees WHERE user_id = auth.uid()
-  )
-);
-
--- 3. Los Administradores y Gerentes pueden ver todos los detalles
-CREATE POLICY "Admins y Gerentes ven todos los detalles"
-ON payroll_details
-FOR ALL
-USING (
-  auth.jwt() ->> 'role' IN ('admin', 'gerente')
-);
-
--- 4. Solo el Gerente puede aprobar nóminas
-CREATE POLICY "Solo Gerente puede aprobar liquidacion"
-ON payroll_runs
-FOR UPDATE
-USING (
-  auth.jwt() ->> 'role' = 'gerente'
-)
-WITH CHECK (
-  auth.jwt() ->> 'role' = 'gerente'
-);
-```
+* **Almacenamiento de Contraseñas:** Encriptadas mediante `bcrypt` (`passlib.context.CryptContext` en Python / extensión `pgcrypto` en PostgreSQL). Ninguna contraseña se almacena en texto plano.
+* **Tokens de Acceso JWT:** Firmados criptográficamente mediante algoritmo HMAC-SHA256 (`HS256`) con clave secreta y tiempo de expiración configurable.
+* **Panel Rápido de Credenciales:** La interfaz de desarrollo incorpora etiquetas `<code>` de 1 clic que facilitan la alternancia entre perfiles (`gerente@empresa.test`, `admin01@empresa.test`, `operario01@empresa.test`, `jesucantillo30@gmail.com`) sin comprometer el aislamiento en backend.
 
 ---
 
-## 4. Auditoría y Trazabilidad
+## 4. Inmutabilidad y Auditoría Forense (`audit_log`)
 
-Cada ciclo de liquidación registra un rastro de auditoría inmutable:
-* **`created_by`**: UUID del Administrador que ejecutó el cálculo.
-* **`approved_by`**: UUID del Gerente que autorizó el pago.
-* **`approved_at`**: Marca de tiempo UTC del momento exacto del visto bueno.
-* **Inmutabilidad:** Una vez que `payroll_runs.status = 'APROBADO'` o `'PAGADO'`, ningún registro en `payroll_details` puede ser editado o eliminado.
+Cada acción crítica del sistema dispara un registro transaccional en la tabla `audit_log`:
+* **Creación de liquidación:** Registra ID de usuario administrador, periodo liquidado y montos totales iniciales.
+* **Aprobación o rechazo:** Registra ID del gerente, marca temporal UTC y motivo formal en caso de rechazo.
+* **Anulación:** Registra ID del administrador, justificación de reliquidación y congelamiento del registro anulado.
+* **Triggers de inmutabilidad (`fn_solo_insertar`):** Los detalles de liquidaciones aprobadas y los registros de auditoría no pueden ser modificados ni eliminados (`DELETE` y `UPDATE` restringidos a nivel de base de datos).

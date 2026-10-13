@@ -42,7 +42,7 @@
 
 * **RF-01 (Gestión de Perfiles y Tarifas):** El sistema debe permitir crear, actualizar y desactivar perfiles laborales, asignando un costo por hora dinámico expresado en moneda legal.
 * **RF-02 (Gestión de Empleados):** Registro de documento, nombres, apellidos, correo, estado activo/inactivo, perfil asignado y cantidad de hijos a cargo.
-* **RF-03 (Registro de Novedades de Horas):** Entrada de horas laboradas por período (mes/año) con validación de no negatividad y límites legales.
+* **RF-03 (Registro de Novedades de Horas y Ventana Temporal - RN-08):** Entrada de horas laboradas por fecha y tipo de hora con validación estricta: prohibición absoluta de reportar fechas futuras (`fecha <= hoy`) y de meses pasados (`fecha >= primer_dia_mes_actual`), además de no negatividad y límites de jornada laboral.
 * **RF-04 (Motor de Liquidación Automática):**
   * Cálculo de Salario Base = $\text{Horas} \times \text{Tarifa}$.
   * Cálculo de Bonificación por Hijos según escala ($0 \rightarrow \$0$, $1 \rightarrow \$250\text{k}$, $2 \rightarrow \$400\text{k}$, $\ge 3 \rightarrow \$600\text{k}$).
@@ -50,18 +50,19 @@
   * Deducción de ARL según tarifa de riesgo asignada.
   * Determinación del valor Neto a Pagar individual.
 * **RF-05 (Consolidado de Nómina):** Sumatoria automática del total devengado, total deducido y total neto a desembolsar por la empresa.
-* **RF-06 (Estados de Nómina):** Flujo de ciclo de vida: `BORRADOR` $\rightarrow$ `EN REVISIÓN` $\rightarrow$ `APROBADO` $\rightarrow$ `PAGADO`.
-* **RF-07 (Generación de Desprendibles):** Vista descargable o imprimible individual para cada empleado.
+* **RF-06 (Estados de Nómina):** Flujo de ciclo de vida: `LIQUIDADA` $\rightarrow$ `APROBADA` / `RECHAZADA` $\rightarrow$ `ANULADA` para reliquidar.
+* **RF-07 (Generación de Desprendibles):** Vista descargable individual en PDF para cada empleado.
+* **RF-08 (Acceso Rápido y Credenciales Interactivas):** Modal de inicio de sesión con panel de credenciales de prueba en etiquetas `<code>` de 1 clic para copiado y autocompletado rápido entre perfiles (Gerente, Administrador, Operarios).
 
 ---
 
 ## 5. Requerimientos No Funcionales (RNF)
 
 * **RNF-01 (Precisión Numérica):** Los campos monetarios se manejarán con precisión decimal fija (`NUMERIC(14,2)`), prohibiendo el uso de tipos de coma flotante que induzcan errores de redondeo.
-* **RNF-02 (Seguridad y Privacidad):** Autenticación mediante tokens JWT y aislamiento de datos a nivel de fila (Row Level Security en PostgreSQL/Supabase).
+* **RNF-02 (Seguridad y Privacidad):** Autenticación mediante tokens JWT y aislamiento de datos a nivel de fila y rol (RBAC).
 * **RNF-03 (Rendimiento):** El cálculo de una nómina de hasta 1,000 empleados debe completarse en menos de 5 segundos en el backend de automatización.
 * **RNF-04 (Usabilidad):** Interfaz web moderna, responsiva y adaptable a dispositivos móviles y escritorio desarrollada en Tailwind CSS.
-* **RNF-05 (Disponibilidad y Despliegue):** Frontend alojado en Vercel con integración continua y base de datos gestionada en la nube de Supabase.
+* **RNF-05 (Disponibilidad y Despliegue):** Backend en FastAPI con PostgreSQL 16 y frontend en SPA servido en host `127.0.0.1:8000` con compatibilidad para navegadores Chromium.
 
 ---
 
@@ -69,3 +70,4 @@
 1. Toda liquidación realizada concuerda al $100\%$ con la matriz de casos de prueba financieros.
 2. Un usuario con rol `operario` no puede acceder bajo ninguna circunstancia a los registros salariales de otros empleados ni a la configuración de tarifas.
 3. El Gerente puede consultar en tiempo real el costo total de la nómina consolidada y autorizar el pago.
+4. El sistema bloquea en backend y frontend cualquier intento de reporte de horas en fechas futuras o de meses anteriores.

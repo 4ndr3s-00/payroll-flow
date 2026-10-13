@@ -1,86 +1,214 @@
-# 🔌 Contratos de API (Especificación REST / JSON)
+# 🔌 Contratos de API (Especificación RESTful OpenAPI / JSON)
 
-Este documento define los contratos de comunicación entre el frontend (React + Vite) y el servicio de automatización en Python (FastAPI), permitiendo el desarrollo desacoplado.
+Este documento define las especificaciones formales de los contratos de comunicación de la API de **PayrollFlow** construida sobre **FastAPI**.
 
----
-
-## 1. Disparar Corrida de Liquidación
-Ejecuta el cálculo batch de nómina para un mes y año dados.
-
-* **Endpoint:** `POST /api/v1/payroll/calculate`
-* **Headers:**
-  ```http
-  Authorization: Bearer <SUPABASE_JWT_TOKEN>
-  Content-Type: application/json
-  ```
-* **Request Body:**
-  ```json
-  {
-    "period_year": 2026,
-    "period_month": 10,
-    "dry_run": false
-  }
-  ```
-* **Response `201 Created`:**
-  ```json
-  {
-    "payroll_run_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
-    "period_year": 2026,
-    "period_month": 10,
-    "status": "BORRADOR",
-    "summary": {
-      "total_employees_processed": 45,
-      "total_base_salary": 98500000.00,
-      "total_subsidies": 14200000.00,
-      "total_deductions": 8392200.00,
-      "total_net_payout": 104307800.00
-    },
-    "created_at": "2026-10-03T10:00:00Z"
-  }
-  ```
+Documentación interactiva disponible en tiempo de ejecución:
+* Swagger UI: `http://localhost:8000/docs` o `http://127.0.0.1:8000/docs`
+* ReDoc: `http://localhost:8000/redoc`
 
 ---
 
-## 2. Simulación / Cálculo Individual Rápido
-Permite a la interfaz probar el impacto del cambio de horas o tarifa sin persistir en base de datos.
+## 1. Módulo de Autenticación (`/api/auth`)
 
-* **Endpoint:** `POST /api/v1/payroll/simulate-single`
+### 1.1. Iniciar Sesión
+Autentica al usuario mediante correo electrónico y contraseña (hasheada con bcrypt).
+
+* **Endpoint:** `POST /api/auth/login`
 * **Request Body:**
   ```json
   {
-    "hours_worked": 200,
-    "hourly_rate": 10000.00,
-    "num_children": 4,
-    "arl_rate": 0.00522
+    "email": "gerente@empresa.test",
+    "password": "Cambiar123*"
   }
   ```
 * **Response `200 OK`:**
   ```json
   {
-    "base_salary": 2000000.00,
-    "child_subsidy": 600000.00,
-    "deductions": {
-      "health_4pct": 80000.00,
-      "pension_4pct": 80000.00,
-      "arl": 10440.00,
-      "total_deductions": 170440.00
-    },
-    "total_devengado": 2600000.00,
-    "net_pay": 2429560.00
+    "access_token": "eyJhbGciOiJIUzI1NiIsIn...",
+    "token_type": "bearer",
+    "usuario": {
+      "id": 1,
+      "email": "gerente@empresa.test",
+      "rol": "GERENTE",
+      "nombres": "Ana",
+      "apellidos": "Gómez",
+      "empleado_id": 1
+    }
+  }
+  ```
+* **Response `401 Unauthorized`:**
+  ```json
+  {
+    "detail": "Credenciales inválidas"
+  }
+  ```
+
+### 1.2. Obtener Perfil Actual
+* **Endpoint:** `GET /api/auth/me`
+* **Headers:** `Authorization: Bearer <JWT>`
+* **Response `200 OK`:** Retorna el perfil y rol del usuario autenticado.
+
+---
+
+## 2. Novedades y Horas Laboradas (`/api/horas`)
+
+### 2.1. Registro de Horas (Colaborador / Operario)
+Permite al colaborador reportar sus horas laboradas con validación temporal estricta (**RN-08**).
+
+* **Endpoint:** `POST /api/horas/registro`
+* **Headers:** `Authorization: Bearer <JWT>`
+* **Request Body:**
+  ```json
+  {
+    "empleado_id": 6,
+    "tipo_hora_id": 1,
+    "fecha": "2026-10-13",
+    "horas": 8.0,
+    "observacion": "Turno ordinario diurno"
+  }
+  ```
+* **Reglas de Validación Temporal (RN-08):**
+  * La `fecha` no puede ser superior a la fecha actual (`fecha <= date.today()`).
+  * La `fecha` no puede pertenecer a un mes anterior (`fecha >= date(hoy.year, hoy.month, 1)`).
+* **Response `200 OK`:**
+  ```json
+  {
+    "id": 145,
+    "empleado_id": 6,
+    "tipo_hora_id": 1,
+    "fecha": "2026-10-13",
+    "horas": 8.0,
+    "estado": "PENDIENTE",
+    "mensaje": "Horas registradas exitosamente"
+  }
+  ```
+* **Response `400 Bad Request` (Fecha Futura):**
+  ```json
+  {
+    "detail": "No se pueden registrar horas para fechas futuras."
+  }
+  ```
+* **Response `400 Bad Request` (Mes Anterior):**
+  ```json
+  {
+    "detail": "No se pueden registrar horas de meses anteriores. Solo se permite el mes actual."
+  }
+  ```
+
+### 2.2. Consultar Horas del Empleado Autenticado
+* **Endpoint:** `GET /api/horas/mis-horas`
+* **Headers:** `Authorization: Bearer <OPERARIO_JWT>`
+* **Response `200 OK`:** Lista de novedades de horas reportadas por el operario en sesión con sus estados (`PENDIENTE`, `APROBADA`, `RECHAZADA`).
+
+### 2.3. Novedades Pendientes por Aprobar (Admin)
+* **Endpoint:** `GET /api/horas/pendientes`
+* **Headers:** `Authorization: Bearer <ADMIN_JWT>`
+* **Response `200 OK`:** Lista consolidada de horas pendientes de revisión en la empresa.
+
+### 2.4. Aprobación Masiva de Horas (Admin)
+* **Endpoint:** `POST /api/horas/aprobar-lote`
+* **Headers:** `Authorization: Bearer <ADMIN_JWT>`
+* **Request Body:**
+  ```json
+  {
+    "ids": [140, 141, 142],
+    "estado": "APROBADA"
+  }
+  ```
+* **Response `200 OK`:**
+  ```json
+  {
+    "procesados": 3,
+    "nuevo_estado": "APROBADA"
   }
   ```
 
 ---
 
-## 3. Aprobación de Nómina (Exclusivo Gerente)
-* **Endpoint:** `PATCH /api/v1/payroll/{payroll_run_id}/approve`
+## 3. Motor de Liquidación de Nómina (`/api/liquidaciones`)
+
+### 3.1. Ejecución Batch de Liquidación (Admin)
+Calcula la nómina completa de todos los empleados activos para el periodo indicado en una sola transacción atómica.
+
+* **Endpoint:** `POST /api/liquidaciones`
+* **Headers:** `Authorization: Bearer <ADMIN_JWT>`
+* **Request Body:**
+  ```json
+  {
+    "anio": 2026,
+    "mes": 10
+  }
+  ```
+* **Response `200 OK`:**
+  ```json
+  {
+    "id": 12,
+    "anio": 2026,
+    "mes": 10,
+    "estado": "LIQUIDADA",
+    "total_devengado": 172000000.00,
+    "total_bonificaciones": 32400000.00,
+    "total_deducciones": 13760000.00,
+    "total_neto": 190640000.00,
+    "total_empleados": 86,
+    "creado_en": "2026-10-13T10:00:00Z"
+  }
+  ```
+* **Response `400 Bad Request`:**
+  ```json
+  {
+    "detail": "Ya existe una liquidación activa para el período 2026-10. Anúlela primero si desea reliquidar."
+  }
+  ```
+
+### 3.2. Aprobación Oficial de Nómina (Exclusivo Gerente)
+* **Endpoint:** `PATCH /api/liquidaciones/{id}/aprobar`
 * **Headers:** `Authorization: Bearer <GERENTE_JWT>`
-* **Response `200 OK`:**
+* **Response `200 OK`:** Estado cambia a `APROBADA` y se guarda registro inmutable en `audit_log`.
+
+### 3.3. Rechazo de Nómina (Exclusivo Gerente)
+* **Endpoint:** `PATCH /api/liquidaciones/{id}/rechazar`
+* **Headers:** `Authorization: Bearer <GERENTE_JWT>`
+* **Request Body:**
   ```json
   {
-    "payroll_run_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
-    "status": "APROBADO",
-    "approved_by": "e67a0304-6ea4-4775-9ce2-9029e843c08f",
-    "approved_at": "2026-10-03T10:15:30Z"
+    "motivo": "Revisar novedades de horas extras reportadas en planta."
   }
   ```
+
+### 3.4. Anulación Formal para Reliquidación (Admin)
+* **Endpoint:** `PATCH /api/liquidaciones/{id}/anular`
+* **Headers:** `Authorization: Bearer <ADMIN_JWT>`
+* **Request Body:**
+  ```json
+  {
+    "motivo": "Ajuste de bonificaciones y reingreso de novedades."
+  }
+  ```
+
+---
+
+## 4. Reportes, Desprendibles y Exportación (`/api/reportes`)
+
+### 4.1. Resumen Ejecutivo (Dashboard Gerente)
+* **Endpoint:** `GET /api/reportes/resumen-ejecutivo`
+* **Headers:** `Authorization: Bearer <GERENTE_JWT>`
+* **Response `200 OK`:** KPIs ejecutivos, masa salarial, costo empresarial y distribución por perfil.
+
+### 4.2. Volante / Desprendible Individual en PDF
+* **Endpoint:** `GET /api/reportes/colilla/{detalle_id}/pdf`
+* **Query Params:** `token` (opcional si se consulta desde enlace directo) e `inline=true/false`.
+* **Response `200 OK`:** Archivo binario con MIME type `application/pdf`.
+
+### 4.3. Consolidado en PDF y CSV
+* **Endpoint PDF:** `GET /api/reportes/consolidado/pdf?periodo_id={id}`
+* **Endpoint CSV:** `GET /api/reportes/consolidado/csv?periodo_id={id}`
+
+---
+
+## 5. Endpoints de Compatibilidad v1 (`/api/v1/payroll`)
+
+Para asegurar interoperabilidad con clientes externos y tests de integración rápidos:
+* `POST /api/v1/payroll/calculate`: Corrida de nómina batch con formato PRD inicial.
+* `POST /api/v1/payroll/simulate-single`: Simulación unitaria de salario sin persistencia en base de datos.
+* `PATCH /api/v1/payroll/{id}/approve`: Aprobación gerencial formato v1.

@@ -106,3 +106,23 @@ $$\text{Presupuesto Total Nómina Empresa} = \sum_{i=1}^{M} \text{Neto a Pagar}_
    - La tarifa por hora y horas trabajadas deben guardarse como una copia inmutable en `payroll_details`. Si el perfil cambia de tarifa al mes siguiente, las nóminas históricas ya aprobadas no se alterarán.
 3. **Redondeo Numérico:**
    - Todo valor monetario debe redondearse al número entero más cercano o máximo 2 decimales utilizando el estándar bancario (*Half-Even Rounding*).
+
+---
+
+## 6. Regla de Registro de Novedades Temporales (RN-08)
+
+Para garantizar la consistencia contable y evitar discrepancias en el período en curso, se aplican dos restricciones temporales estrictas al reportar novedades de horas trabajadas:
+
+### 6.1. Prohibición de Registro en Fechas Futuras
+* **Condición:** $\text{fecha\_reportada} \le \text{fecha\_actual}$ (`CURRENT_DATE`).
+* **Lógica:** Un colaborador no puede anticipar ni certificar horas laboradas en días que aún no han transcurrido.
+* **Comportamiento ante infracción:** El backend rechaza la transacción con código `400 Bad Request` y mensaje `"No se pueden registrar horas para fechas futuras."`.
+
+### 6.2. Prohibición de Registro en Meses Anteriores
+* **Condición:** $\text{fecha\_reportada} \ge \text{primer\_día\_del\_mes\_actual}$ (`date(hoy.year, hoy.month, 1)`).
+* **Lógica:** El cierre contable y las liquidaciones mensuales impiden el ingreso extemporáneo de horas de periodos pasados sin una reapertura o proceso extraordinario de nómina.
+* **Comportamiento ante infracción:** El backend rechaza la transacción con código `400 Bad Request` y mensaje `"No se pueden registrar horas de meses anteriores. Solo se permite el mes actual."`.
+
+### 6.3. Validación en Capas
+1. **Frontend (Capa de Presentación):** En `app.js`, el selector de fecha `<input type="date">` restringe dinámicamente los atributos `min` al primer día del mes actual (`YYYY-MM-01`) y `max` al día en curso (`YYYY-MM-DD`). La función `handleRegistroHorasSubmit` comprueba adicionalmente estas condiciones antes del envío.
+2. **Backend (Capa de Negocio):** En `backend/routers/horas.py`, la función `registrar_horas` valida estrictamente la fecha recibida contra el calendario del sistema, garantizando que ninguna solicitud directa vía API eluda la restricción.

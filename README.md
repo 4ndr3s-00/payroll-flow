@@ -5,16 +5,16 @@
 [![Python](https://img.shields.io/badge/Engine-Python%203.11%2B%20(Decimal)-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Tailwind CSS](https://img.shields.io/badge/UI-Tailwind%20CSS-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![Docker](https://img.shields.io/badge/Container-Docker%20Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/Tests-PyTest%20(100%25%20Passing)-brightgreen?logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Tests](https://img.shields.io/badge/Tests-PyTest%20(21%2F21%20Passing)-brightgreen?logo=pytest&logoColor=white)](https://docs.pytest.org/)
 
-**PayrollFlow** es una solución integral y robusta desarrollada para resolver de forma automatizada, auditable y sin discrepancias contables la liquidación periódica de nómina de empresas financieras y corporativas (85 colaboradores: 1 gerente, 4 administrativos y 80 operarios), cumpliendo estrictamente con los requerimientos formativos del **SENA** y las especificaciones de diseño de base de datos relacional.
+**PayrollFlow** es una solución integral y robusta desarrollada para resolver de forma automatizada, auditable y sin discrepancias contables la liquidación periódica de nómina de empresas financieras y corporativas (86 colaboradores: 1 gerente, 4 administrativos y 81 operarios), cumpliendo estrictamente con los requerimientos formativos del **SENA** y las especificaciones de diseño de base de datos relacional.
 
 ---
 
 ## 📋 Tabla de Contenido
 1. [Contexto del Negocio y Objetivos](#-contexto-del-negocio-y-objetivos)
 2. [Arquitectura del Sistema](#-arquitectura-del-sistema)
-3. [Reglas de Negocio Implementadas (RN-01 a RN-07)](#-reglas-de-negocio-implementadas-rn-01-a-rn-07)
+3. [Reglas de Negocio Implementadas (RN-01 a RN-08)](#-reglas-de-negocio-implementadas-rn-01-a-rn-08)
 4. [Roles y Permisos (RBAC)](#-roles-y-permisos-rbac)
 5. [Contratos de API (RESTful OpenAPI / Swagger)](#-contratos-de-api-restful-openapi--swagger)
 6. [Credenciales de Acceso Simuladas](#-credenciales-de-acceso-simuladas)
@@ -26,10 +26,10 @@
 
 ## 🎯 Contexto del Negocio y Objetivos
 
-Una empresa financiera liquida mensualmente a 85 colaboradores (80 operarios, 4 administrativos y 1 gerente). El proceso manual generaba cuellos de botella, riesgos de cálculo y falta de auditoría. 
+Una empresa financiera liquida mensualmente a 86 colaboradores (81 operarios, 4 administrativos y 1 gerente). El proceso manual generaba cuellos de botella, riesgos de cálculo y falta de auditoría. 
 
 ### Objetivos Alcanzados:
-* **O1 (Reducción de Tiempo):** Liquidación batch de 85 colaboradores procesada en menos de 1 segundo.
+* **O1 (Reducción de Tiempo):** Liquidación batch de 86 colaboradores procesada en menos de 1 segundo.
 * **O2 (Precisión Numérica):** 0 discrepancias de redondeo mediante aritmética exacta `Decimal` y restricciones de integridad `NUMERIC(14,2)` en PostgreSQL.
 * **O3 (Trazabilidad Total):** Historial inmutable con snapshot de reglas aplicadas (`JSONB`), bitácora `audit_log` y triggers `fn_solo_insertar`.
 * **O4 (Portal del Colaborador):** Desprendible/colilla de pago individual consultable directamente y descargable en PDF sin intermediarios.
@@ -77,7 +77,7 @@ graph TD
 
 ---
 
-## 🧮 Reglas de Negocio Implementadas (RN-01 a RN-07)
+## 🧮 Reglas de Negocio Implementadas (RN-01 a RN-08)
 
 | Código | Regla | Fórmula / Comportamiento | Mecanismo de Garantía |
 | :--- | :--- | :--- | :--- |
@@ -88,6 +88,7 @@ graph TD
 | **RN-05** | **Cálculo del Neto** | $\text{neto} = \text{devengado} + \text{bonificación} - \text{salud} - \text{pensión}$. | Restricción CHECK `ck_rn05_neto` en base de datos |
 | **RN-06** | **Total Nómina** | $\sum \text{netos del periodo}$ | Cabecera `liquidaciones.total_nomina` |
 | **RN-07** | **Unicidad de Liquidación** | Una sola liquidación activa por periodo. Recalcular requiere anular primero con motivo formal. | Índice parcial `ux_liquidacion_periodo_activa` y CHECK `anulada_por` |
+| **RN-08** | **Ventana Temporal de Horas** | $\text{primer\_dia\_mes\_actual} \le \text{fecha} \le \text{hoy}$. Prohibido reportar fechas futuras o de meses anteriores. | Validación en backend (`horas.py`, HTTP 400) y atributos HTML5 `min`/`max` en frontend (`app.js`) |
 
 ### Caso Validado de Referencia (CA-02):
 * Empleado: Carlos Mendoza (doc `1000000006`, 4 hijos, salario base $2.000.000):
@@ -109,7 +110,7 @@ $$\text{Devengado } (\$2.000.000) + \text{Bonificación } (\$600.000) - \text{Sa
   * Aprobación masiva e individual de novedades de horas.
   * Parametrización de tarifas horarias (Global, Perfil, Empleado).
 * 👷 **Operario (`OPERARIO`):**
-  * Registro rápido de sus horas trabajadas en $\le$ 3 clics.
+  * Registro rápido de sus horas trabajadas en $\le$ 3 clics con control de calendario restringido al mes actual.
   * Consulta exclusiva de sus propias horas y volante de pago digital (aislamiento estricto por token JWT).
   * Descarga directa de su volante individual en PDF.
 
@@ -117,14 +118,17 @@ $$\text{Devengado } (\$2.000.000) + \text{Bonificación } (\$600.000) - \text{Sa
 
 ## 🔑 Credenciales de Acceso Simuladas (Semilla)
 
+El modal de inicio de sesión incorpora un **panel interactivo de credenciales rápidas** con etiquetas `<code>` de 1 clic que copian la información al portapapeles y auto-rellenan el formulario de login al instante:
+
 Contraseña universal de desarrollo para todos los usuarios: **`Cambiar123*`**
 
-| Rol | Correo de Acceso | Cargo | Acceso Directo |
+| Rol | Correo de Acceso (`<code>`) | Cargo | Acceso Directo |
 | :--- | :--- | :--- | :--- |
-| **Gerente** | `gerente@empresa.test` | Gerencia General | Botón "Gerente" en barra superior |
-| **Administrador** | `admin01@empresa.test` | RRHH / Nómina | Botón "Administrador" |
-| **Operario** | `operario01@empresa.test` | Operario Nivel 1 | Botón "Operario (Carlos M.)" |
-| *(Otros operarios)* | `operario02@empresa.test` a `operario80@empresa.test` | Operarios | Login modal |
+| **Gerente** | `gerente@empresa.test` | Gerencia General | Botón "Gerente" o clic en `<code>` del modal |
+| **Administrador** | `admin01@empresa.test` | RRHH / Nómina | Botón "Administrador" o clic en `<code>` del modal |
+| **Operario** | `operario01@empresa.test` | Operario Nivel 1 (Carlos Mendoza) | Botón "Operario (Carlos M.)" o clic en `<code>` |
+| **Operario (Especial)** | `jesucantillo30@gmail.com` | Operario Nivel 1 (Jesús Cantillo) | Clic en `<code>` del modal |
+| *(Otros operarios)* | `operario02@empresa.test` a `operario80@empresa.test` | Operarios Base (1 a 80) | Login modal |
 
 ---
 
@@ -137,7 +141,8 @@ Contraseña universal de desarrollo para todos los usuarios: **`Cambiar123*`**
    python run.py
    # o simplemente hacer doble clic en start.bat
    ```
-3. Abrir en el navegador: **`http://localhost:8000`**
+   *(Nota: El servidor inicia por defecto en `127.0.0.1:8000` garantizando compatibilidad total con navegadores basados en Chromium en Windows y previniendo el error `ERR_ADDRESS_INVALID`).*
+3. Abrir en el navegador: **`http://localhost:8000`** o **`http://127.0.0.1:8000`**
 4. Documentación interactiva Swagger: **`http://localhost:8000/docs`**
 
 ### Opción 2: Despliegue con Docker Compose
@@ -150,30 +155,43 @@ Esto levanta PostgreSQL 16 con la semilla inicializada y el contenedor de FastAP
 
 ## 🧪 Ejecución de Pruebas Automatizadas
 
-La suite incluye pruebas unitarias matemáticas y pruebas de integración de API extremo a extremo:
+La suite incluye pruebas unitarias matemáticas y pruebas de integración de API extremo a extremo (**21 de 21 pasando**):
 
 ```powershell
 python -m pytest tests/ -v
 ```
 
-### Resultados de la Suite:
+### Resultados de la Suite (21/21 Passing):
 * ✅ `tests/test_calculator.py::test_ca02_ejemplo_validado` **PASSED**
 * ✅ `tests/test_calculator.py::test_rn01_bonificaciones_escalas` **PASSED**
 * ✅ `tests/test_calculator.py::test_rn03_horas_multiplicador` **PASSED**
 * ✅ `tests/test_calculator.py::test_rn05_neto_formula_consistency` **PASSED**
+* ✅ `tests/test_calculator.py::test_tc01_operario_estandar_cuatro_hijos` **PASSED**
+* ✅ `tests/test_calculator.py::test_tc02_tecnico_sin_hijos` **PASSED**
+* ✅ `tests/test_calculator.py::test_tc03_especialista_un_hijo` **PASSED**
+* ✅ `tests/test_calculator.py::test_tc04_operario_dos_hijos` **PASSED**
+* ✅ `tests/test_calculator.py::test_tc05_colaborador_tres_hijos_exactos` **PASSED**
+* ✅ `tests/test_calculator.py::test_tc06_horas_cero_incapacidad` **PASSED**
 * ✅ `tests/test_api.py::test_health_check` **PASSED**
 * ✅ `tests/test_api.py::test_auth_login_all_roles` **PASSED**
 * ✅ `tests/test_api.py::test_auth_invalid_credentials` **PASSED**
 * ✅ `tests/test_api.py::test_rbac_restrictions` **PASSED**
 * ✅ `tests/test_api.py::test_full_liquidation_cycle_and_ca02` **PASSED**
+* ✅ `tests/test_api.py::test_simulate_single_payroll_contract` **PASSED**
+* ✅ `tests/test_api.py::test_export_pdf_consolidado_con_header_y_query_token` **PASSED**
+* ✅ `tests/test_api.py::test_export_csv_con_query_token` **PASSED**
+* ✅ `tests/test_api.py::test_descargar_volante_empleado_admin_gerente` **PASSED**
+* ✅ `tests/test_api.py::test_pdf_inline_mode_and_jesus_cantillo` **PASSED**
+* ✅ `tests/test_api.py::test_registro_horas_rechaza_fechas_futuras_y_meses_anteriores` **PASSED**
 
 ---
 
 ## 📋 Criterios de Aceptación Verificados
 
-* **CA-01 (Cálculo sin intervención manual):** Ejecución batch calcula devengados, subsidios, deducciones y costos patronales de los 85 colaboradores en 1 transacción.
+* **CA-01 (Cálculo sin intervención manual):** Ejecución batch calcula devengados, subsidios, deducciones y costos patronales de los 86 colaboradores en 1 transacción.
 * **CA-02 (Ejemplo validado):** $2.000.000 base + 4 hijos arroja $2.440.000 exactos verificado con `ASSERT` SQL y PyTest.
 * **CA-03 (Segregación de roles RBAC):** Cada perfil solo puede invocar sus endpoints; operarios no pueden ver datos de otros operarios ni alterar tarifas.
 * **CA-04 (Trazabilidad y auditoría):** Toda corrida guarda snapshot `JSONB` de reglas aplicadas y registra eventos en `audit_log`.
 * **CA-05 (Reglas configurables):** Tarifas y porcentajes se gestionan vía API/DB sin necesidad de recompilación.
+* **CA-06 (Validación temporal de horas - RN-08):** Se rechaza cualquier novedad de horas con fecha futura o perteneciente a un mes anterior (error 400 y bloqueo en UI).
 * **CA-HU-10 y CA-HU-12:** Ciclo de vida completo: `LIQUIDADA` $\rightarrow$ `APROBADA` o `RECHAZADA` por Gerencia $\rightarrow$ `ANULADA` con motivo formal para reliquidar.

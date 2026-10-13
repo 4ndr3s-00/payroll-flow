@@ -1,53 +1,84 @@
 # 📊 Especificación de Analítica y KPIs (Dashboard Gerente)
 
-Este documento especifica las métricas financieras clave que el equipo de **Analítica de Datos** diseñará para el panel de control del perfil **Gerente**.
+Este documento especifica las métricas financieras clave y vistas de analítica diseñadas para el panel de control del perfil **Gerente** en **PayrollFlow**.
 
 ---
 
 ## 1. KPIs Principales (Tarjetas Ejecutivas)
 
 1. **Costo Total Nómina del Período:**
-   $$\text{Presupuesto Total} = \sum \text{Neto a Pagar} + \sum \text{Aportes Patronales}$$
-   *Indicador:* Comparativa porcentual respecto al mes anterior ($\Delta\%$).
+   $$\text{Presupuesto Total} = \sum \text{Neto a Pagar} + \sum \text{Aportes Patronales} + \sum \text{Prestaciones Sociales}$$
+   *Indicador:* Obtenido directamente de la vista de base de datos `v_costo_nomina_aprobada`.
 
-2. **Total Bonificaciones Familiares Desembolsadas:**
-   $$\text{Total Subsidios Hijos} = \sum \text{Subsidio por Hijos}$$
-   *Objetivo:* Medir el impacto de la política de bienestar laboral sobre el gasto total.
+2. **Total Bonificaciones Familiares Desembolsadas (RN-01):**
+   $$\text{Total Subsidios Hijos} = \sum \text{bonificacion\_hijos}$$
+   *Objetivo:* Medir el impacto de la política de bienestar laboral en el gasto presupuestal mensual.
 
 3. **Masa Salarial Base Devengada:**
-   $$\text{Total Salarios Base} = \sum (\text{Horas} \times \text{Tarifa})$$
+   $$\text{Total Salarios Base} = \sum \text{devengado\_horas}$$
 
-4. **Promedio de Horas Laboradas por Colaborador:**
-   $$\bar{H} = \frac{\sum \text{Horas Trabajadas}}{\text{Total Empleados Activos}}$$
+4. **Distribución del Personal por Rol:**
+   * 86 colaboradores activos (1 Gerente, 4 Administrativos, 81 Operarios).
 
 ---
 
-## 2. Visualizaciones Gráficas Requeridas
+## 2. Visualizaciones Gráficas y Consultas Analíticas
 
 ### Gráfico A: Distribución del Gasto de Nómina por Perfil Laboral (Donut / Pie Chart)
-* **Objetivo:** Mostrar qué porcentaje del presupuesto se destina a cada cargo (ej. Operarios $60\%$, Técnicos $25\%$, Especialistas $15\%$).
-* **Consulta SQL Sugerida:**
+* **Objetivo:** Mostrar qué porcentaje del presupuesto se destina a cada cargo en el período liquidado.
+* **Consulta SQL Optimizada:**
   ```sql
   SELECT 
-    p.title AS perfil,
-    SUM(pd.net_pay) AS total_pagado
-  FROM payroll_details pd
-  JOIN employees e ON pd.employee_id = e.id
-  JOIN profiles p ON e.profile_id = p.id
-  WHERE pd.payroll_run_id = :payroll_run_id
-  GROUP BY p.title
-  ORDER BY total_pagado DESC;
+    p.nombre AS perfil,
+    COUNT(ld.id) AS total_colaboradores,
+    SUM(ld.neto_pagar) AS total_desembolso_neto,
+    ROUND(SUM(ld.neto_pagar) * 100.0 / NULLIF(SUM(SUM(ld.neto_pagar)) OVER (), 0), 2) AS porcentaje_gasto
+  FROM liquidacion_detalle ld
+  JOIN empleados e ON ld.empleado_id = e.id
+  JOIN perfiles p ON e.perfil_id = p.id
+  WHERE ld.liquidacion_id = :liquidacion_id
+  GROUP BY p.nombre
+  ORDER BY total_desembolso_neto DESC;
   ```
 
-### Gráfico B: Tendencia Histórica del Costo de Nómina (Line Chart)
-* **Objetivo:** Analizar la evolución de la nómina a lo largo de los últimos 6 o 12 meses.
-* **Ejes:** Eje X: Mes/Año, Eje Y: Monto en Millones de COP.
+### Gráfico B: Tendencia Histórica de la Nómina (Line Chart)
+* **Objetivo:** Analizar la evolución y consistencia del gasto salarial consolidado a lo largo del año.
+* **Consulta SQL:**
+  ```sql
+  SELECT 
+    l.anio,
+    l.mes,
+    l.total_neto,
+    l.total_bonificaciones,
+    l.total_deducciones
+  FROM liquidaciones l
+  WHERE l.estado = 'APROBADA'
+  ORDER BY l.anio ASC, l.mes ASC;
+  ```
 
-### Gráfico C: Impacto del Subsidio Familiar por Cantidad de Hijos (Bar Chart)
-* **Objetivo:** Cuántos colaboradores se ubican en cada tramo ($0, 1, 2, \ge 3$ hijos) y monto acumulado entregado.
+### Gráfico C: Impacto del Subsidio Familiar por Tramo de Hijos (Bar Chart)
+* **Objetivo:** Proporción de colaboradores por cantidad de hijos ($0, 1, 2, \ge 3$) y monto asignado según **RN-01**.
+* **Consulta SQL:**
+  ```sql
+  SELECT 
+    CASE 
+      WHEN e.num_hijos = 0 THEN '0 hijos ($0)'
+      WHEN e.num_hijos = 1 THEN '1 hijo ($250.000)'
+      WHEN e.num_hijos = 2 THEN '2 hijos ($400.000)'
+      ELSE '>= 3 hijos ($600.000)'
+    END AS tramo_subsidio,
+    COUNT(e.id) AS cantidad_empleados,
+    SUM(ld.bonificacion_hijos) AS total_bonificacion
+  FROM liquidacion_detalle ld
+  JOIN empleados e ON ld.empleado_id = e.id
+  WHERE ld.liquidacion_id = :liquidacion_id
+  GROUP BY tramo_subsidio
+  ORDER BY total_bonificacion DESC;
+  ```
 
 ---
 
-## 3. Rol del Equipo de Analítica en esta Fase
-* Diseñar las vistas SQL (`views`) en Supabase para que las consultas del dashboard sean ultra rápidas.
-* Integrar librerías de gráficos en el frontend (como `recharts` o `chart.js`) en la interfaz de Vite + React.
+## 3. Vistas Analíticas en Base de Datos
+
+* **`v_horas_valorizadas`:** Calcula y expone en tiempo real las horas trabajadas multiplicadas por la tarifa correspondiente del perfil y tipo de hora.
+* **`v_costo_nomina_aprobada`:** Agrega el costo patronal total (Salud patronal 8.5%, Pensión patronal 12%, ARL, Sena/ICBF/Cajas y provisiones de cesantías/prima).

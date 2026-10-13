@@ -1,18 +1,19 @@
 # 🧪 Plan de Pruebas Financieras y Matriz de Validación QA
 
-Este documento sirve como guía para el equipo de **Analítica de Datos** encargado del aseguramiento de calidad (QA) y validación matemática de las liquidaciones de nómina.
+Este documento sirve como guía para el equipo de **Analítica de Datos** y control de calidad (QA) para el aseguramiento matemático, de reglas de negocio y consistencia operativa de **PayrollFlow**.
 
 ---
 
 ## 1. Estrategia de Pruebas
-Dado que se trata de un sistema financiero, las pruebas deben garantizar:
+Dado que se trata de un sistema financiero, las pruebas garantizan:
 1. **Determinismo:** Mismos datos de entrada producen exactamente los mismos resultados numéricos.
-2. **Precisión Decimal:** Sin pérdidas ni ganancias ficticias de centavos por redondeos imprecisos.
+2. **Precisión Decimal:** Sin pérdidas ni ganancias ficticias de centavos por redondeos imprecisos (`Decimal` en Python y `NUMERIC(14,2)` en PostgreSQL).
 3. **Casos Borde Estrictos:** Comportamiento ante valores límite (0 horas, 0 hijos, más de 3 hijos, sueldos altos).
+4. **Validaciones Temporales (RN-08):** Inmutabilidad del pasado cerrado y bloqueo contra anticipación indebida de horas futuras.
 
 ---
 
-## 2. Matriz de Casos de Prueba (Test Fixtures)
+## 2. Matriz de Casos de Prueba Financieros (Test Fixtures)
 
 | ID | Escenario | Horas | Tarifa/h | Hijos | ARL (%) | Salario Base | Subsidio Hijos | Salud (4%) | Pensión (4%) | ARL | Total Deduc. | Neto Esperado |
 | :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -25,49 +26,44 @@ Dado que se trata de un sistema financiero, las pruebas deben garantizar:
 
 ---
 
-## 3. Script de Prueba Rápida en Python (para el equipo de datos)
+## 3. Matriz de Validación de Novedades de Horas (RN-08)
 
-El equipo de analítica puede ejecutar y extender este test suite con `pytest`:
+| ID | Escenario | Fecha Reportada | Resultado Esperado | Código HTTP |
+| :---: | :--- | :--- | :--- | :---: |
+| **TC-07** | Intento de registro en fecha futura | `CURRENT_DATE + 1` día | Rechazado: *"No se pueden registrar horas para fechas futuras."* | `400 Bad Request` |
+| **TC-08** | Intento de registro en mes anterior | Último día del mes anterior | Rechazado: *"No se pueden registrar horas de meses anteriores. Solo se permite el mes actual."* | `400 Bad Request` |
+| **TC-09** | Registro en fecha válida del mes actual | `CURRENT_DATE` o días transcurridos del mes | Aceptado: Novedad guardada en estado `PENDIENTE` | `200 OK` |
+| **TC-10** | Consulta de volante de pago | Operario autenticado | Generación de PDF con desglose matemático verificado | `200 OK (application/pdf)` |
 
-```python
-import pytest
+---
 
-def calculate_payroll_item(hours: float, rate: float, children: int, arl_rate: float):
-    base_salary = round(hours * rate, 2)
-    
-    # Subsidio por hijos
-    if children == 0:
-        subsidy = 0.0
-    elif children == 1:
-        subsidy = 250000.0
-    elif children == 2:
-        subsidy = 400000.0
-    else:
-        subsidy = 600000.0
-        
-    health = round(base_salary * 0.04, 2)
-    pension = round(base_salary * 0.04, 2)
-    arl = round(base_salary * arl_rate, 2)
-    
-    total_deductions = round(health + pension + arl, 2)
-    net_pay = round(base_salary + subsidy - total_deductions, 2)
-    
-    return {
-        "base_salary": base_salary,
-        "subsidy": subsidy,
-        "health": health,
-        "pension": pension,
-        "arl": arl,
-        "total_deductions": total_deductions,
-        "net_pay": net_pay
-    }
+## 4. Ejecución del Suite Automatizado
 
-def test_tc01_operario_cuatro_hijos():
-    res = calculate_payroll_item(200, 10000, 4, 0.00522)
-    assert res["base_salary"] == 2000000.00
-    assert res["subsidy"] == 600000.00
-    assert res["health"] == 80000.00
-    assert res["pension"] == 80000.00
-    assert res["arl"] == 10440.00
-    assert res["net_pay"] == 2429560.00
+La suite de pruebas contiene **21 pruebas automatizadas** ejecutadas con `pytest`:
+
+```powershell
+python -m pytest tests/ -v
 ```
+
+### Inventario de Pruebas:
+1. `tests/test_calculator.py::test_ca02_ejemplo_validado`
+2. `tests/test_calculator.py::test_rn01_bonificaciones_escalas`
+3. `tests/test_calculator.py::test_rn03_horas_multiplicador`
+4. `tests/test_calculator.py::test_rn05_neto_formula_consistency`
+5. `tests/test_calculator.py::test_tc01_operario_estandar_cuatro_hijos`
+6. `tests/test_calculator.py::test_tc02_tecnico_sin_hijos`
+7. `tests/test_calculator.py::test_tc03_especialista_un_hijo`
+8. `tests/test_calculator.py::test_tc04_operario_dos_hijos`
+9. `tests/test_calculator.py::test_tc05_colaborador_tres_hijos_exactos`
+10. `tests/test_calculator.py::test_tc06_horas_cero_incapacidad`
+11. `tests/test_api.py::test_health_check`
+12. `tests/test_api.py::test_auth_login_all_roles`
+13. `tests/test_api.py::test_auth_invalid_credentials`
+14. `tests/test_api.py::test_rbac_restrictions`
+15. `tests/test_api.py::test_full_liquidation_cycle_and_ca02`
+16. `tests/test_api.py::test_simulate_single_payroll_contract`
+17. `tests/test_api.py::test_export_pdf_consolidado_con_header_y_query_token`
+18. `tests/test_api.py::test_export_csv_con_query_token`
+19. `tests/test_api.py::test_descargar_volante_empleado_admin_gerente`
+20. `tests/test_api.py::test_pdf_inline_mode_and_jesus_cantillo`
+21. `tests/test_api.py::test_registro_horas_rechaza_fechas_futuras_y_meses_anteriores`
